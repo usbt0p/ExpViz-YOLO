@@ -36,16 +36,19 @@ SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
 
 def load_experiments_data():
     """
-    Reads experiment configurations from the list folder and corresponding results
-    from the train folder. Mocks latency data.
+    Reads experiment configurations from any 'experiments*/list' folder and
+    corresponding results from the sibling 'train' folder.
     """
     data = []
 
-    # Get all YAML config files
-    yaml_files = glob.glob(os.path.join(EXP_LIST_DIR, "*.yaml"))
+    # Search for all YAML files in any experiments*/list folder
+    # This allows for experiments_yolo26, experiments_yolo25, etc.
+    search_path = os.path.join(base_dir, "experiments*", "list", "*.yaml")
+    yaml_files = glob.glob(search_path)
 
     if not yaml_files:
-        print(f"No experiment configurations found in {EXP_LIST_DIR}")
+        print(f"No experiment configurations found in {search_path}")
+        # Fallback to specific check if glob fails or structure is different
         return pd.DataFrame()
 
     print(f"Found {len(yaml_files)} experiment configurations.")
@@ -66,28 +69,30 @@ def load_experiments_data():
         model_size = config.get("model_size", "n")
         is_pretrained = config.get("pretrained", False)
 
-        # Define Series Name for grouping (e.g., "YOLO26 Scratch", "YOLO26 Pretrained")
-        # We assume 'rect_mode' might be another variant, adding it if needed.
+        # Determine Series Name
         rect_mode = config.get("rect_mode", False)
         variant = "Pretrained" if is_pretrained else "Scratch"
         series_name = f"YOLO26 {variant}"
         if rect_mode:
             series_name += " (Rect)"
 
-        # Locate results.csv
-        results_path = os.path.join(EXP_TRAIN_DIR, exp_name, "results.csv")
+        # Determine path to results relative to the config file
+        # yf is like .../experiments_yolo26/list/name.yaml
+        # we need .../experiments_yolo26/train/exp_name/results.csv
+        # Go up 2 levels from config file to get 'experiments_yolo26'
+        exp_root = os.path.dirname(os.path.dirname(yf))
+        train_dir = os.path.join(exp_root, "train")
+        results_path = os.path.join(train_dir, exp_name, "results.csv")
+
         if not os.path.exists(results_path):
-            print(f"Results not found for experiment: {exp_name}")
+            print(f"Results not found for experiment: {exp_name} at {results_path}")
             continue
 
         try:
             # Read CSV
             df = pd.read_csv(results_path)
-            # Clean column names (remove potential leading/trailing spaces)
             df.columns = df.columns.str.strip()
 
-            # Identify metric columns
-            # Expected: metrics/precision(B), metrics/recall(B), metrics/mAP50(B), metrics/mAP50-95(B)
             col_map = {
                 "map50": "metrics/mAP50(B)",
                 "map50_95": "metrics/mAP50-95(B)",
@@ -95,24 +100,16 @@ def load_experiments_data():
                 "recall": "metrics/recall(B)",
             }
 
-            # verify columns exist
             if not all(c in df.columns for c in col_map.values()):
-                print(
-                    f"Missing expected columns in {exp_name}. Available: {df.columns.tolist()}"
-                )
                 continue
 
-            # Select the Best Epoch based on mAP50-95
             best_idx = df[col_map["map50_95"]].idxmax()
             best_row = df.loc[best_idx]
 
-            # Mock Inference Time
-            # Generate a random value based on the configuration mean/std
             lat_conf = LATENCY_CONFIG.get(model_size, {"mean": 10.0, "std": 1.0})
             inference_time = np.random.normal(lat_conf["mean"], lat_conf["std"])
             inference_std = lat_conf["std"]
 
-            # Append to data list
             data_entry = {
                 "Experiment": exp_name,
                 "Series": series_name,
@@ -168,10 +165,8 @@ def create_visualization():
         print("No data loaded. Aborting.")
         return
 
-    # Prepare output
     output_file(OUTPUT_FILE, title="Metrics Visualization")
 
-    # Metrics to visualize
     metrics = [
         {"col": "mAP50", "title": "mAP 50", "y_axis": "mAP 50"},
         {"col": "mAP50_95", "title": "mAP 50-95", "y_axis": "mAP 50-95"},
@@ -179,9 +174,7 @@ def create_visualization():
         {"col": "Recall", "title": "Recall", "y_axis": "Recall"},
     ]
 
-    # Get unique series for consistent coloring
     series_list = sorted(df["Series"].unique())
-    # Use a palette. Category10_10 has 10 colors.
     colors = Category10[10] if len(series_list) <= 10 else Turbo256[: len(series_list)]
     color_map = {
         series: colors[i % len(colors)] for i, series in enumerate(series_list)
@@ -190,7 +183,6 @@ def create_visualization():
     plots = []
 
     for m in metrics:
-        # Create figure
         p = figure(
             title=f"{m['title']} vs Latency",
             width_policy="max",
@@ -200,10 +192,9 @@ def create_visualization():
         )
         style_plot(p, "Latency (ms) [Mocked]", m["y_axis"], m["title"])
 
-        # Store renderers to create legend later
         legend_items = []
+        all_renderers = []  # Collect renderers for HoverTool
 
-        # Plot each series
         for series_name in series_list:
             subset = df[df["Series"] == series_name].sort_values("SizeOrder")
 
@@ -223,28 +214,35 @@ def create_visualization():
                 alpha=0.8,
             )
 
-            # Draw Points (Circle) for tooltips and visibility
-            # Use distinct outer circle for 'pop' effect like in image
-            circle_outline = p.circle(
+            # Draw Points (Scatter)
+            # Outer circle for effect
+            scatter_outline = p.scatter(
                 x="InferenceTime",
                 y=m["col"],
                 source=source,
                 size=12,
-                color="white",
-                fill_alpha=0,
+                line_color="white",
+                fill_color=None,
+                line_width=1.5,
             )
-            circle_fill = p.circle(
-                x="InferenceTime", y=m["col"], source=source, size=8, color=c
+            # Inner circle
+            scatter_fill = p.scatter(
+                x="InferenceTime",
+                y=m["col"],
+                source=source,
+                size=8,
+                color=c,
+                line_color=None,
             )
 
+            all_renderers.append(scatter_fill)
             legend_items.append(
-                LegendItem(label=series_name, renderers=[line, circle_fill])
+                LegendItem(label=series_name, renderers=[line, scatter_fill])
             )
 
-        # Add Tooltips
-        # Shows results of ALL other metrics as requested
+        # Add Tooltips - ensure we target ALL renderers
         hover = HoverTool(
-            renderers=[circle_fill],
+            renderers=all_renderers,
             tooltips=[
                 ("Series", "@Series"),
                 ("Experiment", "@Experiment"),
@@ -259,7 +257,6 @@ def create_visualization():
         )
         p.add_tools(hover)
 
-        # Improve Legend
         legend = Legend(items=legend_items)
         legend.click_policy = "hide"
         legend.label_text_color = "#cccccc"
