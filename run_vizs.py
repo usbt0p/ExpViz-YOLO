@@ -3,7 +3,7 @@ import os
 
 from training_visualization import load_training_history, create_viz_epoch
 from metrics_visualization import load_experiments_data, create_visualization
-
+from precision_recall_visualization import create_pr_visualization
 
 import webbrowser
 from http.server import SimpleHTTPRequestHandler
@@ -85,6 +85,10 @@ def generate_index(output_dir: Path):
                     <a href="metrics_visualization.html">Performance Metrics</a>
                     <p>Pareto Frontier (Metrics vs Latency)</p>
                 </li>
+                <li>
+                    <a href="pr_visualization.html">Precision-Recall Tradeoff</a>
+                    <p>Scatter Plot (Precision vs Recall for Best Checkpoint)</p>
+                </li>
             </ul>
         </div>
     </body>
@@ -135,6 +139,9 @@ if __name__ == "__main__":
     print("Generating Metrics Visualization...")
     df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
     create_visualization(df_metrics, OUTPUT_DIR / "metrics_visualization.html")
+
+    print("Generating Precision-Recall Visualization...")
+    create_pr_visualization(df_metrics, OUTPUT_DIR / "pr_visualization.html")
 
     print("Generating Index...")
     generate_index(OUTPUT_DIR)

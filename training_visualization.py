@@ -27,7 +27,7 @@ def load_training_history(exp_list_dir, exp_train_dir):
         exp_list_dir (str): Directory containing experiment configuration files. Assumes the list
             directory provided contains the `.yaml` files for each experiment.
         exp_train_dir (str): Directory containing experiment training results. Assumes the train
-            directory provided contains the subdirectories with each of the exp_list_dir experiment names, and 
+            directory provided contains the subdirectories with each of the exp_list_dir experiment names, and
             their respective `results.csv` files.
 
     Returns:
@@ -262,7 +262,7 @@ def create_grid(df, metrics, axis_type="linear"):
 
 def create_viz_epoch(training_history_df, output_path):
     """
-    Creates a visualization of training curves for a given DataFrame. Supports linear, 
+    Creates a visualization of training curves for a given DataFrame. Supports linear,
     log and log-error (1-metric) views.
 
     Args:
@@ -271,7 +271,7 @@ def create_viz_epoch(training_history_df, output_path):
     Returns:
         str: Path to the saved visualization HTML file.
     """
-    
+
     if training_history_df.empty:
         print("No data loaded.")
         return
