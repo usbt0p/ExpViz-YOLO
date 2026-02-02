@@ -6,22 +6,17 @@ import numpy as np
 from bokeh.plotting import figure, output_file, save
 from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
 from bokeh.layouts import gridplot
-from bokeh.palettes import Turbo256, Category10
+from bokeh.palettes import Turbo256, Category10, Category20
 from bokeh.io import curdoc
 
 # Set random seed for reproducibility of mocked data
 np.random.seed(42)
 
-# --- Configuration ---
-# Paths assuming script is run from project root
-base_dir = os.path.dirname(os.path.abspath(__file__))
-EXP_LIST_DIR = os.path.join(base_dir, "experiments_yolo26/list")
-EXP_TRAIN_DIR = os.path.join(base_dir, "experiments_yolo26/train")
-OUTPUT_FILE = "metrics_visualization.html"
-
 # Mock Inference Time Config (Mean ms, Std ms)
 # Model sizes: n (nano), s (small), m (medium), l (large), x (extra large)
-# These are rough estimates relative to each other for visualization purposes
+
+# TODO the real latency comes from the result of ultralytics.benchmark and comes as a csv file most likely, 
+# exact dir structure still tbd 
 LATENCY_CONFIG = {
     "n": {"mean": 1.5, "std": 0.1},
     "s": {"mean": 3.2, "std": 0.2},
@@ -34,16 +29,28 @@ LATENCY_CONFIG = {
 SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
 
 
-def load_experiments_data():
+def load_experiments_data(list_dir, train_dir):
     """
     Reads experiment configurations from any 'experiments*/list' folder and
     corresponding results from the sibling 'train' folder.
+
+    Args:
+        list_dir (str): Directory containing experiment configuration files. Assumes the list
+            directory provided contains the `.yaml` files for each experiment.
+        train_dir (str): Directory containing experiment training results. Assumes the train
+            directory provided contains the subdirectories with each of the list_dir experiment names, and 
+            their respective `results.csv` files.
+
+    Returns:
+        pd.DataFrame: DataFrame containing training history for all experiments.
     """
     data = []
 
     # Search for all YAML files in any experiments*/list folder
     # This allows for experiments_yolo26, experiments_yolo25, etc.
-    search_path = os.path.join(base_dir, "experiments*", "list", "*.yaml")
+
+    # TODO change this to take the dir as an argument, assume just above .../list and .../train
+    search_path = os.path.join(list_dir, "*.yaml")
     yaml_files = glob.glob(search_path)
 
     if not yaml_files:
@@ -66,22 +73,21 @@ def load_experiments_data():
             continue
 
         # Extract experiment metadata
-        model_size = config.get("model_size", "n")
+        model_size = config.get("model_size", "Unknown")
         is_pretrained = config.get("pretrained", False)
+        model_version = config.get("model_version", "Unknown")
+        freezing_strategy = config.get("freeze_layers", None)
 
         # Determine Series Name
+        # the naming of the series is key to it's managing: we'll plot all series with unique names
         rect_mode = config.get("rect_mode", False)
-        variant = "Pretrained" if is_pretrained else "Scratch"
-        series_name = f"YOLO26 {variant}"
+        variant = "Pretr." if is_pretrained else "Scratch"
+        if freezing_strategy:
+            variant += f"   ({freezing_strategy})"
+        series_name = f"{model_version.capitalize()} {variant}"
         if rect_mode:
             series_name += " (Rect)"
 
-        # Determine path to results relative to the config file
-        # yf is like .../experiments_yolo26/list/name.yaml
-        # we need .../experiments_yolo26/train/exp_name/results.csv
-        # Go up 2 levels from config file to get 'experiments_yolo26'
-        exp_root = os.path.dirname(os.path.dirname(yf))
-        train_dir = os.path.join(exp_root, "train")
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
         if not os.path.exists(results_path):
@@ -106,6 +112,7 @@ def load_experiments_data():
             best_idx = df[col_map["map50_95"]].idxmax()
             best_row = df.loc[best_idx]
 
+            # TODO the latency config should be given from the arguments in a csv
             lat_conf = LATENCY_CONFIG.get(model_size, {"mean": 10.0, "std": 1.0})
             inference_time = np.random.normal(lat_conf["mean"], lat_conf["std"])
             inference_std = lat_conf["std"]
@@ -158,24 +165,41 @@ def style_plot(p, x_label, y_label, title):
     return p
 
 
-def create_visualization():
-    df = load_experiments_data()
+def create_visualization(experiments_dataframe, output_path):
+    """
+    Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
 
-    if df.empty:
+    Args:
+        experiments_dataframe (pandas.DataFrame): DataFrame containing training history for all experiments.
+        output_file (str): Path to save the visualization HTML file.
+    
+    Returns:
+        str: Path to the saved visualization HTML file.
+    """
+    
+    if experiments_dataframe.empty:
         print("No data loaded. Aborting.")
         return
 
-    output_file(OUTPUT_FILE, title="Metrics Visualization")
+    output_file(output_path, title="Metrics Visualization")
 
     metrics = [
-        {"col": "mAP50", "title": "mAP 50", "y_axis": "mAP 50"},
-        {"col": "mAP50_95", "title": "mAP 50-95", "y_axis": "mAP 50-95"},
+        {"col": "mAP50", "title": "mAP 50", "y_axis": "mAP@50"},
+        {"col": "mAP50_95", "title": "mAP 50-95", "y_axis": "mAP@50:95"},
         {"col": "Precision", "title": "Precision", "y_axis": "Precision"},
         {"col": "Recall", "title": "Recall", "y_axis": "Recall"},
     ]
 
+    # the naming of the series is key to it's managing
     series_list = sorted(df["Series"].unique())
-    colors = Category10[10] if len(series_list) <= 10 else Turbo256[: len(series_list)]
+    # TODO see if this is correct
+    l = len(series_list)
+    if l <= 10:
+        colors = Category10[10]
+    elif l <= 20:
+        colors = Category20[20]
+    else:
+        colors = Turbo256[: len(series_list)]
     color_map = {
         series: colors[i % len(colors)] for i, series in enumerate(series_list)
     }
@@ -274,8 +298,16 @@ def create_visualization():
     )
 
     save(grid)
-    print(f"Visualization saved to {OUTPUT_FILE}")
+    print(f"Visualization saved to {os.path.abspath(output_path)}")
 
 
 if __name__ == "__main__":
-    create_visualization()
+
+    # Paths assuming script is run from project root
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    EXP_LIST_DIR = os.path.join(base_dir, "experiments_yolo26/list")
+    EXP_TRAIN_DIR = os.path.join(base_dir, "experiments_yolo26/train")
+    OUTPUT_FILE = "metrics_visualization.html"
+
+    df = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
+    create_visualization(df, OUTPUT_FILE)

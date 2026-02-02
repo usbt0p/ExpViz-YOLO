@@ -18,17 +18,23 @@ from bokeh.layouts import gridplot, column, row
 from bokeh.palettes import Turbo256, Category10
 from bokeh.io import curdoc
 
-# --- Configuration ---
-base_dir = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_FILE = "training_metrics_visualization.html"
 
-
-def load_training_history():
+def load_training_history(exp_list_dir, exp_train_dir):
     """
     Reads full training history for all experiments.
+
+    Args:
+        exp_list_dir (str): Directory containing experiment configuration files. Assumes the list
+            directory provided contains the `.yaml` files for each experiment.
+        exp_train_dir (str): Directory containing experiment training results. Assumes the train
+            directory provided contains the subdirectories with each of the exp_list_dir experiment names, and 
+            their respective `results.csv` files.
+
+    Returns:
+        pd.DataFrame: DataFrame containing training history for all experiments.
     """
     data_frames = []
-    search_path = os.path.join(base_dir, "experiments*", "list", "*.yaml")
+    search_path = os.path.join(exp_list_dir, "*.yaml")
     yaml_files = glob.glob(search_path)
 
     if not yaml_files:
@@ -55,10 +61,7 @@ def load_training_history():
         model_version = config.get("model_version", "Unknown")
         freezing_strategy = config.get("freeze_layers", None)
 
-        # Determine path
-        exp_root = os.path.dirname(os.path.dirname(yf))
-        train_dir = os.path.join(exp_root, "train")
-        results_path = os.path.join(train_dir, exp_name, "results.csv")
+        results_path = os.path.join(exp_train_dir, exp_name, "results.csv")
 
         if not os.path.exists(results_path):
             continue
@@ -171,6 +174,14 @@ def style_plot(p, x_label, y_label, title):
 def create_grid(df, metrics, axis_type="linear"):
     """
     Creates a 2x2 grid of plots for a given list of metrics.
+
+    Args:
+        df (pandas.DataFrame): DataFrame containing training history for all experiments.
+        metrics (list of dict): List of dictionaries containing metric information.
+        axis_type (str, optional): Type of axis to use. Defaults to "linear".
+
+    Returns:
+        bokeh.layouts.gridplot.GridPlot: A 2x2 grid of plots.
     """
     plots = []
 
@@ -207,7 +218,7 @@ def create_grid(df, metrics, axis_type="linear"):
                 x="Epoch", y=m["col"], source=source, line_width=2, color=c, alpha=0.9
             )
 
-            # Invisible scatter for tooltip targeting
+            # Invisible scatter for tooltip targeting (makes it easier to target the tooltip)
             scatter = p.scatter(
                 x="Epoch",
                 y=m["col"],
@@ -249,13 +260,23 @@ def create_grid(df, metrics, axis_type="linear"):
     )
 
 
-def create_viz_epoch():
-    df = load_training_history()
-    if df.empty:
+def create_viz_epoch(training_history_df, output_path):
+    """
+    Creates a visualization of training curves for a given DataFrame. Supports linear, 
+    log and log-error (1-metric) views.
+
+    Args:
+        training_history_df (pandas.DataFrame): DataFrame containing training history for all experiments.
+        output_file (str): Path to save the visualization HTML file.
+    Returns:
+        str: Path to the saved visualization HTML file.
+    """
+    
+    if training_history_df.empty:
         print("No data loaded.")
         return
 
-    output_file(OUTPUT_FILE, title="Training Curves Visualization")
+    output_file(output_path, title="Training Curves Visualization")
 
     # 1. Linear Metric View
     metrics_linear = [
@@ -284,7 +305,7 @@ def create_viz_epoch():
             "tooltip_label": "Recall",
         },
     ]
-    grid_linear = create_grid(df, metrics_linear, "linear")
+    grid_linear = create_grid(training_history_df, metrics_linear, "linear")
 
     # 2. Log Loss View (Replaces Log Metric)
     metrics_log_loss = [
@@ -313,7 +334,7 @@ def create_viz_epoch():
             "tooltip_label": "Train Box",
         },
     ]
-    grid_log_loss = create_grid(df, metrics_log_loss, "log")
+    grid_log_loss = create_grid(training_history_df, metrics_log_loss, "log")
     grid_log_loss.visible = False
 
     # 3. Log Error View (Inverted)
@@ -343,7 +364,7 @@ def create_viz_epoch():
             "tooltip_label": "Error",
         },
     ]
-    grid_log_error = create_grid(df, metrics_log_error, "log")
+    grid_log_error = create_grid(training_history_df, metrics_log_error, "log")
     grid_log_error.visible = False
 
     # Toggle Control
@@ -382,8 +403,17 @@ def create_viz_epoch():
     )
 
     save(layout)
-    print(f"Visualization saved to {OUTPUT_FILE}")
+    out = os.path.abspath(output_path)
+    print(f"Visualization saved to {out}")
+    return out
 
 
 if __name__ == "__main__":
-    create_viz_epoch()
+    # Paths assuming script is run from project root
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    EXP_LIST_DIR = os.path.join(base_dir, "experiments_yolo26/list")
+    EXP_TRAIN_DIR = os.path.join(base_dir, "experiments_yolo26/train")
+    OUTPUT_FILE = "metrics_visualization.html"
+
+    df = load_training_history(EXP_LIST_DIR, EXP_TRAIN_DIR)
+    create_viz_epoch(df, OUTPUT_FILE)
