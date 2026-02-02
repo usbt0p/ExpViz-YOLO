@@ -18,24 +18,9 @@ from bokeh.layouts import gridplot, column, row
 from bokeh.palettes import Turbo256, Category10
 from bokeh.io import curdoc
 
-# Import styles and config from existing script
-# We will duplicate load_experiments_data behavior but adjusted for full history (similar to what I tried before)
-# Since the original load_experiments_data only returns one row per experiment, I need to implement a full history loader here.
-# I will copy the helper functions to avoid breaking the original script.
-
 # --- Configuration ---
 base_dir = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_FILE = "training_metrics_visualization.html"
-
-LATENCY_CONFIG = {
-    "n": {"mean": 1.5, "std": 0.1},
-    "s": {"mean": 3.2, "std": 0.2},
-    "m": {"mean": 6.5, "std": 0.4},
-    "l": {"mean": 11.5, "std": 0.8},
-    "x": {"mean": 18.0, "std": 1.2},
-}
-
-SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
 
 
 def load_training_history():
@@ -67,6 +52,8 @@ def load_training_history():
         model_size = config.get("model_size", "n")
         is_pretrained = config.get("pretrained", False)
         rect_mode = config.get("rect_mode", False)
+        model_version = config.get("model_version", "Unknown")
+        freezing_strategy = config.get("freeze_layers", None)
 
         # Determine path
         exp_root = os.path.dirname(os.path.dirname(yf))
@@ -85,25 +72,26 @@ def load_training_history():
                 "map50_95": "metrics/mAP50-95(B)",
                 "precision": "metrics/precision(B)",
                 "recall": "metrics/recall(B)",
+                "val_box": "val/box_loss",
+                "val_cls": "val/cls_loss",
+                "val_dfl": "val/dfl_loss",
+                "train_box": "train/box_loss",
             }
 
             if not all(c in df.columns for c in col_map.values()):
                 continue
 
-            # Series Label for plot
-            # e.g. "26n Scratch"
+            # Label Generation
             variant = "Pret." if is_pretrained else "Scratch"
-            clean_name = f"YOLO26{model_size} {variant}"
+            if freezing_strategy:
+                variant += f" ({freezing_strategy})"
+            clean_name = f"{model_version.capitalize()}{model_size} {variant}"
             if rect_mode:
                 clean_name += " Rect"
-
-            lat_conf = LATENCY_CONFIG.get(model_size, {"mean": 10.0, "std": 1.0})
-            inference_time = np.random.normal(lat_conf["mean"], lat_conf["std"])
 
             df_exp = df.copy()
             df_exp["Experiment"] = exp_name
             df_exp["Label"] = clean_name
-            df_exp["InferenceTime"] = inference_time
 
             df_exp.rename(
                 columns={
@@ -111,19 +99,46 @@ def load_training_history():
                     col_map["map50_95"]: "mAP50_95",
                     col_map["precision"]: "Precision",
                     col_map["recall"]: "Recall",
+                    col_map["val_box"]: "ValBoxLoss",
+                    col_map["val_cls"]: "ValClsLoss",
+                    col_map["val_dfl"]: "ValDflLoss",
+                    col_map["train_box"]: "TrainBoxLoss",
                     "epoch": "Epoch",
                 },
                 inplace=True,
             )
 
+            # Calculate Error Metrics (1 - Metric) for Inverted Log View
+            df_exp["Error_mAP50"] = 1 - df_exp["mAP50"]
+            df_exp["Error_mAP50_95"] = 1 - df_exp["mAP50_95"]
+            df_exp["Error_Precision"] = 1 - df_exp["Precision"]
+            df_exp["Error_Recall"] = 1 - df_exp["Recall"]
+
+            # Clip error at extremely small epsilon for log scale safety
+            epsilon = 1e-6
+            for col in [
+                "Error_mAP50",
+                "Error_mAP50_95",
+                "Error_Precision",
+                "Error_Recall",
+            ]:
+                df_exp[col] = df_exp[col].clip(lower=epsilon)
+
             keep_cols = [
                 "Experiment",
                 "Label",
-                "InferenceTime",
                 "mAP50",
                 "mAP50_95",
                 "Precision",
                 "Recall",
+                "Error_mAP50",
+                "Error_mAP50_95",
+                "Error_Precision",
+                "Error_Recall",
+                "ValBoxLoss",
+                "ValClsLoss",
+                "ValDflLoss",
+                "TrainBoxLoss",
                 "Epoch",
             ]
             data_frames.append(df_exp[keep_cols])
@@ -153,21 +168,10 @@ def style_plot(p, x_label, y_label, title):
     return p
 
 
-def create_grid(df, axis_type="linear"):
+def create_grid(df, metrics, axis_type="linear"):
     """
-    Creates a 2x2 grid of plots.
+    Creates a 2x2 grid of plots for a given list of metrics.
     """
-    metrics = [
-        {"col": "mAP50", "title": f"mAP 50 ({axis_type})", "y_axis": "mAP 50"},
-        {"col": "mAP50_95", "title": f"mAP 50-95 ({axis_type})", "y_axis": "mAP 50-95"},
-        {
-            "col": "Precision",
-            "title": f"Precision ({axis_type})",
-            "y_axis": "Precision",
-        },
-        {"col": "Recall", "title": f"Recall ({axis_type})", "y_axis": "Recall"},
-    ]
-
     plots = []
 
     # Colors
@@ -198,17 +202,17 @@ def create_grid(df, axis_type="linear"):
             c = color_map[exp_name]
             label = subset.iloc[0]["Label"]
 
-            # Line only, no points to avoid clutter
+            # Line only
             line = p.line(
                 x="Epoch", y=m["col"], source=source, line_width=2, color=c, alpha=0.9
             )
 
-            # Invisible scatter for tooltip targeting (makes hitting the line easier)
+            # Invisible scatter for tooltip targeting
             scatter = p.scatter(
                 x="Epoch",
                 y=m["col"],
                 source=source,
-                size=10,
+                size=3,
                 alpha=0,
                 hover_alpha=0.5,
                 color=c,
@@ -217,13 +221,15 @@ def create_grid(df, axis_type="linear"):
             all_renderers.append(scatter)
             legend_items.append(LegendItem(label=label, renderers=[line]))
 
-        # Tooltip: Minimalist to avoid "Giant Tooltip"
-        # mode='mouse' ensures only the hovered point is shown
+        # Tooltip
         hover = HoverTool(
             renderers=all_renderers,
             tooltips=[
                 ("Model", "@Label"),
-                ("Values", f"Epoch: @Epoch, {m['y_axis']}: @{m['col']}{{0.000}}"),
+                (
+                    "Values",
+                    f"Epoch: @Epoch, {m['tooltip_label']}: @{m['col']}{{0.0000}}",
+                ),
             ],
             mode="mouse",
         )
@@ -251,28 +257,116 @@ def create_viz_epoch():
 
     output_file(OUTPUT_FILE, title="Training Curves Visualization")
 
-    # Create two separate grids: Linear and Log
-    grid_linear = create_grid(df, "linear")
-    grid_log = create_grid(df, "log")
+    # 1. Linear Metric View
+    metrics_linear = [
+        {
+            "col": "mAP50",
+            "title": "mAP 50 (Linear)",
+            "y_axis": "mAP 50",
+            "tooltip_label": "mAP 50",
+        },
+        {
+            "col": "mAP50_95",
+            "title": "mAP 50-95 (Linear)",
+            "y_axis": "mAP 50-95",
+            "tooltip_label": "mAP 50-95",
+        },
+        {
+            "col": "Precision",
+            "title": "Precision (Linear)",
+            "y_axis": "Precision",
+            "tooltip_label": "Precision",
+        },
+        {
+            "col": "Recall",
+            "title": "Recall (Linear)",
+            "y_axis": "Recall",
+            "tooltip_label": "Recall",
+        },
+    ]
+    grid_linear = create_grid(df, metrics_linear, "linear")
 
-    # Log grid is hidden initially
-    grid_log.visible = False
+    # 2. Log Loss View (Replaces Log Metric)
+    metrics_log_loss = [
+        {
+            "col": "ValBoxLoss",
+            "title": "Val Box Loss (Log)",
+            "y_axis": "Loss",
+            "tooltip_label": "Val Box",
+        },
+        {
+            "col": "ValClsLoss",
+            "title": "Val Class Loss (Log)",
+            "y_axis": "Loss",
+            "tooltip_label": "Val Class",
+        },
+        {
+            "col": "ValDflLoss",
+            "title": "Val DFL Loss (Log)",
+            "y_axis": "Loss",
+            "tooltip_label": "Val DFL",
+        },
+        {
+            "col": "TrainBoxLoss",
+            "title": "Train Box Loss (Log)",
+            "y_axis": "Loss",
+            "tooltip_label": "Train Box",
+        },
+    ]
+    grid_log_loss = create_grid(df, metrics_log_loss, "log")
+    grid_log_loss.visible = False
+
+    # 3. Log Error View (Inverted)
+    metrics_log_error = [
+        {
+            "col": "Error_mAP50",
+            "title": "Error (1-mAP50) (Log)",
+            "y_axis": "Error Rate",
+            "tooltip_label": "Error",
+        },
+        {
+            "col": "Error_mAP50_95",
+            "title": "Error (1-mAP50-95) (Log)",
+            "y_axis": "Error Rate",
+            "tooltip_label": "Error",
+        },
+        {
+            "col": "Error_Precision",
+            "title": "Error (1-Precision) (Log)",
+            "y_axis": "Error Rate",
+            "tooltip_label": "Error",
+        },
+        {
+            "col": "Error_Recall",
+            "title": "Error (1-Recall) (Log)",
+            "y_axis": "Error Rate",
+            "tooltip_label": "Error",
+        },
+    ]
+    grid_log_error = create_grid(df, metrics_log_error, "log")
+    grid_log_error.visible = False
 
     # Toggle Control
     radio_group = RadioGroup(
-        labels=["Linear Scale", "Log Scale"], active=0, inline=True
+        labels=["Linear Metric", "Log Loss", "Log Error (Inverted)"],
+        active=0,
+        inline=True,
     )
 
-    # JavaScript Callback to toggle visibility
+    # JavaScript Callback
     callback = CustomJS(
-        args=dict(linear=grid_linear, log=grid_log),
+        args=dict(g1=grid_linear, g2=grid_log_loss, g3=grid_log_error),
         code="""
+        g1.visible = false;
+        g2.visible = false;
+        g3.visible = false;
+        
         if (cb_obj.active == 0) {
-            linear.visible = true;
-            log.visible = false;
+            g1.visible = true;
+        } else if (cb_obj.active == 1) {
+            g2.visible = true;
         } else {
-            linear.visible = false;
-            log.visible = true;
+            g3.visible = true;
         }
     """,
     )
@@ -280,9 +374,10 @@ def create_viz_epoch():
 
     # Layout
     layout = column(
-        row(radio_group, sizing_mode="fixed", width=300),
+        row(radio_group, sizing_mode="fixed", width=450),
         grid_linear,
-        grid_log,
+        grid_log_loss,
+        grid_log_error,
         sizing_mode="stretch_width",
     )
 
