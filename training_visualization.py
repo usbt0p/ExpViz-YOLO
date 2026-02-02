@@ -402,18 +402,6 @@ def create_viz_epoch(training_history_df, output_path):
         sizing_mode="stretch_width",
     )
 
-    save(layout)
-    out = os.path.abspath(output_path)
+    out = save(layout, output_path)
     print(f"Visualization saved to {out}")
     return out
-
-
-if __name__ == "__main__":
-    # Paths assuming script is run from project root
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    EXP_LIST_DIR = os.path.join(base_dir, "experiments_yolo26/list")
-    EXP_TRAIN_DIR = os.path.join(base_dir, "experiments_yolo26/train")
-    OUTPUT_FILE = "metrics_visualization.html"
-
-    df = load_training_history(EXP_LIST_DIR, EXP_TRAIN_DIR)
-    create_viz_epoch(df, OUTPUT_FILE)

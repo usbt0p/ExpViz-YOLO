@@ -191,7 +191,7 @@ def create_visualization(experiments_dataframe, output_path):
     ]
 
     # the naming of the series is key to it's managing
-    series_list = sorted(df["Series"].unique())
+    series_list = sorted(experiments_dataframe["Series"].unique())
     # TODO see if this is correct
     l = len(series_list)
     if l <= 10:
@@ -220,7 +220,9 @@ def create_visualization(experiments_dataframe, output_path):
         all_renderers = []  # Collect renderers for HoverTool
 
         for series_name in series_list:
-            subset = df[df["Series"] == series_name].sort_values("SizeOrder")
+            subset = experiments_dataframe[
+                experiments_dataframe["Series"] == series_name
+                ].sort_values("SizeOrder")
 
             if subset.empty:
                 continue
@@ -297,17 +299,6 @@ def create_visualization(experiments_dataframe, output_path):
         [[plots[0], plots[1]], [plots[2], plots[3]]], sizing_mode="stretch_width"
     )
 
-    save(grid)
-    print(f"Visualization saved to {os.path.abspath(output_path)}")
-
-
-if __name__ == "__main__":
-
-    # Paths assuming script is run from project root
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    EXP_LIST_DIR = os.path.join(base_dir, "experiments_yolo26/list")
-    EXP_TRAIN_DIR = os.path.join(base_dir, "experiments_yolo26/train")
-    OUTPUT_FILE = "metrics_visualization.html"
-
-    df = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
-    create_visualization(df, OUTPUT_FILE)
+    out = save(grid)
+    print(f"Visualization saved to {out}")
+    return out
