@@ -88,10 +88,10 @@ def load_training_history(exp_list_dir, exp_train_dir):
             # Label Generation
             variant = "Pret." if is_pretrained else "Scratch"
             if freezing_strategy:
-                variant += f" ({freezing_strategy})"
+                variant += f" {freezing_strategy}"
             clean_name = f"{model_version.capitalize()}{model_size} {variant}"
             if rect_mode:
-                clean_name += " Rect"
+                clean_name += " rect"
 
             df_exp = df.copy()
             df_exp["Experiment"] = exp_name

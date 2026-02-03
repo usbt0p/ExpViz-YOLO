@@ -126,10 +126,10 @@ def load_experiments_data(list_dir, train_dir):
         rect_mode = config.get("rect_mode", False)
         variant = "Pretr." if is_pretrained else "Scratch"
         if freezing_strategy:
-            variant += f"   ({freezing_strategy})"
+            variant += f" {freezing_strategy}"
         series_name = f"{model_version.capitalize()} {variant}"
         if rect_mode:
-            series_name += " (Rect)"
+            series_name += " rect"
 
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
