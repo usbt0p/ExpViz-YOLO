@@ -176,6 +176,8 @@ def create_grid(df, metrics, axis_type="linear"):
     # color_map = {exp: colors[i % len(colors)] for i, exp in enumerate(exp_list)}
     color_map = get_color_map(exp_list)
 
+    renderer_map = {}
+
     for m in metrics:
         p = figure(
             title=m["title"],
@@ -187,7 +189,6 @@ def create_grid(df, metrics, axis_type="linear"):
         )
         style_plot(p, "Epoch", m["y_axis"], m["title"])
 
-        legend_items = []
         all_renderers = []
 
         for exp_name in exp_list:
@@ -204,48 +205,47 @@ def create_grid(df, metrics, axis_type="linear"):
                 x="Epoch", y=m["col"], source=source, line_width=2, color=c, alpha=0.9
             )
 
-            # Invisible scatter for tooltip targeting (makes it easier to target the tooltip)
+            # Invisible scatter for tooltip targeting
             scatter = p.scatter(
                 x="Epoch",
                 y=m["col"],
                 source=source,
-                size=3,
+                size=2,
                 alpha=0,
                 hover_alpha=0.5,
                 color=c,
             )
 
             all_renderers.append(scatter)
-            legend_items.append(LegendItem(label=label, renderers=[line]))
+
+            # Collect renderers for global legend
+            if label not in renderer_map:
+                renderer_map[label] = []
+            renderer_map[label].append(line)
 
         # Tooltip
         hover = HoverTool(
             renderers=all_renderers,
-            tooltips=[
-                ("Model", "@Label"),
-                (
-                    "Values",
-                    f"Epoch: @Epoch, {m['tooltip_label']}: @{m['col']}{{0.0000}}",
-                ),
-            ],
+            tooltips="""
+            <div style="background-color: rgba(32, 32, 32, 0.7); padding: 10px; border: 1px solid #444; border-radius: 5px;">
+                <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">@Label</div>
+                <div style="color: #aaa; font-size: 0.9em;">
+                    Epoch: <span style="color: #eee;">@Epoch</span><br>
+                    {tooltip_label}: <span style="color: #eee;">@{col_name}{{0.0000}}</span>
+                </div>
+            </div>
+            """.format(
+                tooltip_label=m["tooltip_label"], col_name=m["col"]
+            ),
             mode="mouse",
         )
         p.add_tools(hover)
-
-        legend = Legend(items=legend_items)
-        legend.click_policy = "hide"
-        legend.label_text_color = "#cccccc"
-        legend.label_text_font_size = "8pt"  # Smaller font
-        legend.spacing = 1  # Tighter spacing
-        legend.background_fill_color = "#202020"
-        legend.border_line_color = "#444444"
-        p.add_layout(legend, "right")
-
         plots.append(p)
 
-    return gridplot(
+    grid = gridplot(
         [[plots[0], plots[1]], [plots[2], plots[3]]], sizing_mode="stretch_width"
     )
+    return grid, renderer_map
 
 
 def create_viz_epoch(training_history_df, output_path, top_n=None):
@@ -283,6 +283,7 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
 
     # 1. Linear Metric View
     metrics_linear = [
+        # ... existing metrics ...
         {
             "col": "mAP50",
             "title": "mAP 50 (Linear)",
@@ -308,9 +309,9 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
             "tooltip_label": "Recall",
         },
     ]
-    grid_linear = create_grid(training_history_df, metrics_linear, "linear")
+    grid_linear, map_linear = create_grid(training_history_df, metrics_linear, "linear")
 
-    # 2. Log Loss View (Replaces Log Metric)
+    # 2. Log Loss View
     metrics_log_loss = [
         {
             "col": "ValBoxLoss",
@@ -337,10 +338,12 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
             "tooltip_label": "Train Box",
         },
     ]
-    grid_log_loss = create_grid(training_history_df, metrics_log_loss, "log")
+    grid_log_loss, map_log_loss = create_grid(
+        training_history_df, metrics_log_loss, "log"
+    )
     grid_log_loss.visible = False
 
-    # 3. Log Error View (Inverted)
+    # 3. Log Error View
     metrics_log_error = [
         {
             "col": "Error_mAP50",
@@ -367,8 +370,72 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
             "tooltip_label": "Error",
         },
     ]
-    grid_log_error = create_grid(training_history_df, metrics_log_error, "log")
+    grid_log_error, map_log_error = create_grid(
+        training_history_df, metrics_log_error, "log"
+    )
     grid_log_error.visible = False
+
+    # Merge Renderer Maps for Global Toggle
+    exp_list = sorted(training_history_df["Experiment"].unique())
+    color_map = get_color_map(exp_list)
+    label_to_color = {
+        training_history_df[training_history_df["Experiment"] == exp].iloc[0][
+            "Label"
+        ]: color_map[exp]
+        for exp in exp_list
+        if not training_history_df[training_history_df["Experiment"] == exp].empty
+    }
+
+    all_labels = sorted(
+        list(
+            set(map_linear.keys())
+            | set(map_log_loss.keys())
+            | set(map_log_error.keys())
+        )
+    )
+
+    # Create Unified Legend Plot
+    # We create a dummy plot to host the legend on the right of the entire grid
+    height = 150 + len(all_labels) * 20
+    p_legend = figure(
+        width=250,
+        height=height,
+        toolbar_location=None,
+        outline_line_color=None,
+        x_range=(0, 1),
+        y_range=(0, 1),  # Keep dummy glyphs out of view
+    )
+    p_legend.background_fill_color = "#151515"
+    p_legend.border_fill_color = "#151515"
+    p_legend.xaxis.visible = False
+    p_legend.yaxis.visible = False
+    p_legend.grid.visible = False
+
+    legend_items = []
+    for label in all_labels:
+        # Add a dummy glyph to p_legend so the legend specimen has something to draw in its own plot context
+        color = label_to_color.get(label, "#ffffff")
+        dummy = p_legend.line(
+            x=[2], y=[2], color=color, line_width=2
+        )  # x=2 is out of (0,1) range
+
+        renderers = (
+            map_linear.get(label, [])
+            + map_log_loss.get(label, [])
+            + map_log_error.get(label, [])
+            + [dummy]
+        )
+        legend_items.append(LegendItem(label=label, renderers=renderers))
+
+    legend = Legend(items=legend_items, ncols=1)
+    legend.click_policy = "hide"
+    legend.label_text_color = "#cccccc"
+    legend.label_text_font_size = "8pt"
+    legend.spacing = 1
+    legend.background_fill_color = "#202020"
+    legend.border_line_color = "#444444"
+    legend.location = "top_left"
+    p_legend.add_layout(legend)
 
     # Toggle Control
     radio_group = RadioGroup(
@@ -397,14 +464,21 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
     radio_group.js_on_change("active", callback)
 
     # Layout
+    # Group the 3 grids in a single column and place the legend next to it
+    grids_col = column(
+        grid_linear, grid_log_loss, grid_log_error, sizing_mode="stretch_width"
+    )
+
     layout = column(
         row(radio_group, sizing_mode="fixed", width=450),
-        grid_linear,
-        grid_log_loss,
-        grid_log_error,
+        row(grids_col, p_legend, sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
     )
 
+    # Final styling: background color of the whole page
+    curdoc().theme = "dark_minimal"
+
     out = save(layout, output_path)
+
     print(f"Visualization saved to {out}")
     return out

@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 from bokeh.plotting import figure, output_file, save
 from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
-from bokeh.layouts import gridplot
+from bokeh.layouts import gridplot, row, column
 from bokeh.io import curdoc
 import warnings
 
@@ -236,6 +236,7 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
     color_map = get_color_map(series_list)
 
     plots = []
+    renderer_map = {}
 
     for m in metrics:
         p = figure(
@@ -247,9 +248,7 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
         )
         style_plot(p, "Latency (ms)", m["y_axis"], m["title"])
 
-        legend_items = []
-        all_renderers = []  # Collect renderers for HoverTool
-
+        all_renderers = []
         for series_name in series_list:
             subset = experiments_dataframe[
                 experiments_dataframe["Series"] == series_name
@@ -295,48 +294,84 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
             all_renderers.append(line)
             all_renderers.append(scatter_fill)
             all_renderers.append(scatter_outline)
-            legend_items.append(
-                LegendItem(
-                    label=series_name, renderers=[line, scatter_fill, scatter_outline]
-                )
-            )
 
-        # Add Tooltips - ensure we target ALL renderers
+            # Collect for global legend
+            if series_name not in renderer_map:
+                renderer_map[series_name] = []
+            renderer_map[series_name].extend([line, scatter_fill, scatter_outline])
+
+        # Add Tooltips - transparent background
         hover = HoverTool(
             renderers=all_renderers,
-            tooltips=[
-                ("Series", "@Series"),
-                ("Experiment", "@Experiment"),
-                ("Model Size", "@ModelSize"),
-                ("Latency", "@InferenceTime{0.00} ms"),
-                ("mAP50", "@mAP50{0.000}"),
-                ("mAP50-95", "@mAP50_95{0.000}"),
-                ("Precision", "@Precision{0.000}"),
-                ("Recall", "@Recall{0.000}"),
-                ("Epoch", "@Epoch"),
-                ("Size", "@Size_MB MB"),
-                ("FPS", "@FPS"),
-                ("Format", "@Format"),
-            ],
+            tooltips="""
+            <div style="background-color: rgba(32, 32, 32, 0.7); padding: 10px; border: 1px solid #444; border-radius: 5px;">
+                <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">@Series (@ModelSize)</div>
+                <div style="color: #aaa; font-size: 0.9em;">
+                    Latency: <span style="color: #eee;">@InferenceTime{0.00} ms</span><br>
+                    mAP50: <span style="color: #eee;">@mAP50{0.000}</span><br>
+                    mAP50-95: <span style="color: #eee;">@mAP50_95{0.000}</span><br>
+                    Precision: <span style="color: #eee;">@Precision{0.000}</span><br>
+                    Recall: <span style="color: #eee;">@Recall{0.000}</span><br>
+                    FPS: <span style="color: #eee;">@FPS</span> | Format: <span style="color: #eee;">@Format</span>
+                </div>
+            </div>
+            """,
         )
         p.add_tools(hover)
-
-        legend = Legend(items=legend_items)
-        legend.click_policy = "hide"
-        legend.label_text_color = "#cccccc"
-        legend.background_fill_color = "#202020"
-        legend.border_line_color = "#444444"
-        p.add_layout(legend, "right")
-
         plots.append(p)
 
-    # Layout: Grid 2x2
-    # [mAP50, mAP50-95]
-    # [Precision, Recall]
+    # Construct Global Legend
+    # Calculate height based on total labels
+    height = 50 + len(series_list) * 20
+    p_legend = figure(
+        width=250,
+        height=max(800, height),
+        toolbar_location=None,
+        outline_line_color=None,
+        x_range=(0, 1),
+        y_range=(0, 1),
+    )
+    p_legend.background_fill_color = "#151515"
+    p_legend.border_fill_color = "#151515"
+    p_legend.xaxis.visible = False
+    p_legend.yaxis.visible = False
+    p_legend.grid.visible = False
+
+    legend_items = []
+    for series_name in series_list:
+        c = color_map[series_name]
+        # Dummy renderers in p_legend for display
+        d_line = p_legend.line(x=[2], y=[2], color=c, line_width=2)
+        d_scatter = p_legend.scatter(x=[2], y=[2], color=c, size=8)
+
+        real_renderers = renderer_map.get(series_name, [])
+        legend_items.append(
+            LegendItem(
+                label=series_name, renderers=real_renderers + [d_line, d_scatter]
+            )
+        )
+
+    n_cols = 1 if len(series_list) <= 30 else 2
+    legend = Legend(items=legend_items, ncols=n_cols)
+    legend.click_policy = "hide"
+    legend.label_text_color = "#cccccc"
+    legend.label_text_font_size = "8pt"
+    legend.spacing = 1
+    legend.background_fill_color = "#202020"
+    legend.border_line_color = "#444444"
+    legend.location = "top_left"
+    p_legend.add_layout(legend)
+
+    # Layout: Grid 2x2 on top, or side by side
     grid = gridplot(
         [[plots[0], plots[1]], [plots[2], plots[3]]], sizing_mode="stretch_width"
     )
+    layout = row(grid, p_legend, sizing_mode="stretch_width")
 
-    out = save(grid)
+    # Final styling: background color of the whole page
+    curdoc().theme = "dark_minimal"
+
+    out = save(layout)
+
     print(f"Visualization saved to {out}")
     return out

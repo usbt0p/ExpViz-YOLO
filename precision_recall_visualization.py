@@ -81,28 +81,29 @@ def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
         )
 
         # Connect points of the same series with a faint line to show size progression
-        p.line(
+        line = p.line(
             x="Recall", y="Precision", source=source, color=c, alpha=0.3, line_width=1
         )
 
         all_renderers.append(scatter)
-        legend_items.append(LegendItem(label=series_name, renderers=[scatter]))
+        legend_items.append(LegendItem(label=series_name, renderers=[scatter, line]))
 
-    # Tooltips
+    # Tooltips - transparent background
     hover = HoverTool(
         renderers=all_renderers,
-        tooltips=[
-            ("Series", "@Series"),
-            ("Model Size", "@ModelSize"),
-            ("mAP50", "@mAP50{0.000}"),
-            ("Precision", "@Precision{0.000}"),
-            ("Recall", "@Recall{0.000}"),
-            ("Recall", "@Recall{0.000}"),
-            ("Latency", "@InferenceTime{0.00} ms"),
-            ("Size", "@Size_MB MB"),
-            ("FPS", "@FPS"),
-            ("Format", "@Format"),
-        ],
+        tooltips="""
+        <div style="background-color: rgba(32, 32, 32, 0.7); padding: 10px; border: 1px solid #444; border-radius: 5px;">
+            <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">@Series (@ModelSize)</div>
+            <div style="color: #aaa; font-size: 0.9em;">
+                Recall: <span style="color: #eee;">@Recall{0.000}</span><br>
+                Precision: <span style="color: #eee;">@Precision{0.000}</span><br>
+                mAP50: <span style="color: #eee;">@mAP50{0.000}</span><br>
+                Latency: <span style="color: #eee;">@InferenceTime{0.00} ms</span><br>
+                Size: <span style="color: #eee;">@Size_MB MB</span><br>
+                FPS: <span style="color: #eee;">@FPS</span> | Format: <span style="color: #eee;">@Format</span>
+            </div>
+        </div>
+        """,
     )
     p.add_tools(hover)
 
@@ -114,6 +115,9 @@ def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
     legend.border_line_color = "#444444"
     p.add_layout(legend, "right")
 
+    # Final styling
+    curdoc().theme = "dark_minimal"
     out = save(p)
+
     print(f"Visualization saved to {out}")
     return out
