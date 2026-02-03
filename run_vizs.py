@@ -127,8 +127,8 @@ def serve_results(output_dir: Path, port=8000):
 if __name__ == "__main__":
     # Paths assuming script is run from project root
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    EXP_LIST_DIR = base_dir / "experiments_yolo26/list"
-    EXP_TRAIN_DIR = base_dir / "experiments_yolo26/train"
+    EXP_LIST_DIR = base_dir / "experiments" / "list"
+    EXP_TRAIN_DIR = base_dir / "experiments" / "train"
     OUTPUT_DIR = base_dir / "results"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 

@@ -15,8 +15,9 @@ from bokeh.models import (
     Row,
 )
 from bokeh.layouts import gridplot, column, row
-from bokeh.palettes import Turbo256, Category10
 from bokeh.io import curdoc
+
+from commons import style_plot, get_color_map
 
 
 def load_training_history(exp_list_dir, exp_train_dir):
@@ -154,23 +155,6 @@ def load_training_history(exp_list_dir, exp_train_dir):
 
     return pd.concat(data_frames, ignore_index=True)
 
-
-def style_plot(p, x_label, y_label, title):
-    p.background_fill_color = "#151515"
-    p.border_fill_color = "#151515"
-    p.outline_line_color = None
-    p.xgrid.grid_line_color = "#444444"
-    p.ygrid.grid_line_color = "#444444"
-    p.xaxis.axis_label = x_label
-    p.yaxis.axis_label = y_label
-    p.axis.axis_label_text_color = "#aaaaaa"
-    p.axis.major_label_text_color = "#aaaaaa"
-    p.axis.axis_label_text_font_style = "bold"
-    p.title.text_color = "#ffffff"
-    p.title.text_font_size = "14pt"
-    return p
-
-
 def create_grid(df, metrics, axis_type="linear"):
     """
     Creates a 2x2 grid of plots for a given list of metrics.
@@ -187,8 +171,9 @@ def create_grid(df, metrics, axis_type="linear"):
 
     # Colors
     exp_list = sorted(df["Experiment"].unique())
-    colors = Category10[10] if len(exp_list) <= 10 else Turbo256[: len(exp_list)]
-    color_map = {exp: colors[i % len(colors)] for i, exp in enumerate(exp_list)}
+    #colors = Category10[10] if len(exp_list) <= 10 else Turbo[256]
+    #color_map = {exp: colors[i % len(colors)] for i, exp in enumerate(exp_list)}
+    color_map = get_color_map(exp_list)
 
     for m in metrics:
         p = figure(

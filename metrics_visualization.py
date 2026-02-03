@@ -6,24 +6,10 @@ import numpy as np
 from bokeh.plotting import figure, output_file, save
 from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
 from bokeh.layouts import gridplot
-from bokeh.palettes import Turbo256, Category10, Category20
 from bokeh.io import curdoc
+import warnings
 
-# Set random seed for reproducibility of mocked data
-np.random.seed(42)
-
-# Mock Inference Time Config (Mean ms, Std ms)
-# Model sizes: n (nano), s (small), m (medium), l (large), x (extra large)
-
-# TODO the real latency comes from the result of ultralytics.benchmark and comes as a csv file most likely, 
-# exact dir structure still tbd 
-LATENCY_CONFIG = {
-    "n": {"mean": 1.5, "std": 0.1},
-    "s": {"mean": 3.2, "std": 0.2},
-    "m": {"mean": 6.5, "std": 0.4},
-    "l": {"mean": 11.5, "std": 0.8},
-    "x": {"mean": 18.0, "std": 1.2},
-}
+from commons import get_color_map, style_plot
 
 # Mapping size to an order for sorting in line plots
 SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
@@ -38,7 +24,7 @@ def load_experiments_data(list_dir, train_dir):
         list_dir (str): Directory containing experiment configuration files. Assumes the list
             directory provided contains the `.yaml` files for each experiment.
         train_dir (str): Directory containing experiment training results. Assumes the train
-            directory provided contains the subdirectories with each of the list_dir experiment names, and 
+            directory provided contains the subdirectories with each of the list_dir experiment names, and
             their respective `results.csv` files.
 
     Returns:
@@ -49,14 +35,44 @@ def load_experiments_data(list_dir, train_dir):
     # Search for all YAML files in any experiments*/list folder
     # This allows for experiments_yolo26, experiments_yolo25, etc.
 
-    # TODO change this to take the dir as an argument, assume just above .../list and .../train
+    # Search for all YAML files in any experiments*/list folder
+    # This allows for experiments_yolo26, experiments_yolo25, etc.
+
     search_path = os.path.join(list_dir, "*.yaml")
     yaml_files = glob.glob(search_path)
 
     if not yaml_files:
         print(f"No experiment configurations found in {search_path}")
-        # Fallback to specific check if glob fails or structure is different
         return pd.DataFrame()
+
+    # TODO separate this into a function
+    # Load Inference Times from CSV
+    # Assumes combined_results.csv is in the parent of the train_dir (i.e. experiments/combined_results.csv)
+    experiments_root = os.path.dirname(train_dir)
+    csv_path = os.path.join(experiments_root, "combined_results.csv")
+    latency_map = {}
+
+    if os.path.exists(csv_path):
+        try:
+            print(f"Loading inference times from {csv_path}")
+            latency_df = pd.read_csv(csv_path)
+            # Ensure column names are clean
+            latency_df.columns = latency_df.columns.str.strip()
+            # Create a map: model -> Inference_ms_im
+            if (
+                "model" in latency_df.columns
+                and "Inference_ms_im" in latency_df.columns
+            ):
+                latency_map = latency_df.set_index("model")["Inference_ms_im"].to_dict()
+            else:
+                print(
+                    f"Warning: Expected columns 'model' and 'Inference_ms_im' not found in {csv_path}"
+                )
+                print(f"Available columns: {latency_df.columns.tolist()}")
+        except Exception as e:
+            print(f"Error reading inference time CSV: {e}")
+    else:
+        print(f"Warning: Inference time CSV not found at {csv_path}. Using fallbacks.")
 
     print(f"Found {len(yaml_files)} experiment configurations.")
 
@@ -112,10 +128,16 @@ def load_experiments_data(list_dir, train_dir):
             best_idx = df[col_map["map50_95"]].idxmax()
             best_row = df.loc[best_idx]
 
-            # TODO the latency config should be given from the arguments in a csv
-            lat_conf = LATENCY_CONFIG.get(model_size, {"mean": 10.0, "std": 1.0})
-            inference_time = np.random.normal(lat_conf["mean"], lat_conf["std"])
-            inference_std = lat_conf["std"]
+            # Get Latency: Try exact match, or fallback to size-based default
+            # precise matching logic might be needed if exp_name doesn't match model name exactly
+            if exp_name in latency_map:
+                inference_time = latency_map[exp_name]
+            else:
+                warnings.warn(f"Latency not found for {exp_name}, skipping.")
+                inference_time = None
+
+            # We don't have std in the CSV, so setting to 0 or None
+            inference_std = 0.0
 
             data_entry = {
                 "Experiment": exp_name,
@@ -137,34 +159,6 @@ def load_experiments_data(list_dir, train_dir):
 
     return pd.DataFrame(data)
 
-
-def style_plot(p, x_label, y_label, title):
-    """
-    Applies a dark theme style similar to the provided image.
-    """
-    # Dark background
-    p.background_fill_color = "#151515"
-    p.border_fill_color = "#151515"
-    p.outline_line_color = None
-
-    # Grid lines
-    p.xgrid.grid_line_color = "#444444"
-    p.ygrid.grid_line_color = "#444444"
-
-    # Axis labels and ticks
-    p.xaxis.axis_label = x_label
-    p.yaxis.axis_label = y_label
-    p.axis.axis_label_text_color = "#aaaaaa"
-    p.axis.major_label_text_color = "#aaaaaa"
-    p.axis.axis_label_text_font_style = "bold"
-
-    # Title
-    p.title.text_color = "#ffffff"
-    p.title.text_font_size = "14pt"
-
-    return p
-
-
 def create_visualization(experiments_dataframe, output_path):
     """
     Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
@@ -172,11 +166,11 @@ def create_visualization(experiments_dataframe, output_path):
     Args:
         experiments_dataframe (pandas.DataFrame): DataFrame containing training history for all experiments.
         output_file (str): Path to save the visualization HTML file.
-    
+
     Returns:
         str: Path to the saved visualization HTML file.
     """
-    
+
     if experiments_dataframe.empty:
         print("No data loaded. Aborting.")
         return
@@ -191,18 +185,10 @@ def create_visualization(experiments_dataframe, output_path):
     ]
 
     # the naming of the series is key to it's managing
-    series_list = sorted(experiments_dataframe["Series"].unique())
-    # TODO see if this is correct
-    l = len(series_list)
-    if l <= 10:
-        colors = Category10[10]
-    elif l <= 20:
-        colors = Category20[20]
-    else:
-        colors = Turbo256[: len(series_list)]
-    color_map = {
-        series: colors[i % len(colors)] for i, series in enumerate(series_list)
-    }
+    # TODO sort by maAP50
+    experiments_dataframe = experiments_dataframe.sort_values(by="mAP50", ascending=False)
+    series_list = experiments_dataframe["Series"].unique()
+    color_map = get_color_map(series_list)
 
     plots = []
 
@@ -214,7 +200,7 @@ def create_visualization(experiments_dataframe, output_path):
             tools="pan,box_zoom,wheel_zoom,reset,save",
             active_scroll="wheel_zoom",
         )
-        style_plot(p, "Latency (ms) [Mocked]", m["y_axis"], m["title"])
+        style_plot(p, "Latency (ms)", m["y_axis"], m["title"])
 
         legend_items = []
         all_renderers = []  # Collect renderers for HoverTool
@@ -222,7 +208,7 @@ def create_visualization(experiments_dataframe, output_path):
         for series_name in series_list:
             subset = experiments_dataframe[
                 experiments_dataframe["Series"] == series_name
-                ].sort_values("SizeOrder")
+            ].sort_values("SizeOrder")
 
             if subset.empty:
                 continue
@@ -261,9 +247,11 @@ def create_visualization(experiments_dataframe, output_path):
                 line_color=None,
             )
 
+            all_renderers.append(line)
             all_renderers.append(scatter_fill)
+            all_renderers.append(scatter_outline)
             legend_items.append(
-                LegendItem(label=series_name, renderers=[line, scatter_fill])
+                LegendItem(label=series_name, renderers=[line, scatter_fill, scatter_outline])
             )
 
         # Add Tooltips - ensure we target ALL renderers
@@ -273,7 +261,7 @@ def create_visualization(experiments_dataframe, output_path):
                 ("Series", "@Series"),
                 ("Experiment", "@Experiment"),
                 ("Model Size", "@ModelSize"),
-                ("Latency", "@InferenceTime{0.00} ms (+/- @InferenceStd{0.00})"),
+                ("Latency", "@InferenceTime{0.00} ms"),
                 ("mAP50", "@mAP50{0.000}"),
                 ("mAP50-95", "@mAP50_95{0.000}"),
                 ("Precision", "@Precision{0.000}"),
