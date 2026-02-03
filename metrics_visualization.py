@@ -15,42 +15,15 @@ from commons import get_color_map, style_plot
 SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
 
 
-def load_experiments_data(list_dir, train_dir):
+def load_inference_metadata(experiments_root):
     """
-    Reads experiment configurations from any 'experiments*/list' folder and
-    corresponding results from the sibling 'train' folder.
-
-    Args:
-        list_dir (str): Directory containing experiment configuration files. Assumes the list
-            directory provided contains the `.yaml` files for each experiment.
-        train_dir (str): Directory containing experiment training results. Assumes the train
-            directory provided contains the subdirectories with each of the list_dir experiment names, and
-            their respective `results.csv` files.
-
-    Returns:
-        pd.DataFrame: DataFrame containing training history for all experiments.
+    Loads inference metadata (latency, size, fps, format) from combined_results.csv.
     """
-    data = []
-
-    # Search for all YAML files in any experiments*/list folder
-    # This allows for experiments_yolo26, experiments_yolo25, etc.
-
-    # Search for all YAML files in any experiments*/list folder
-    # This allows for experiments_yolo26, experiments_yolo25, etc.
-
-    search_path = os.path.join(list_dir, "*.yaml")
-    yaml_files = glob.glob(search_path)
-
-    if not yaml_files:
-        print(f"No experiment configurations found in {search_path}")
-        return pd.DataFrame()
-
-    # TODO separate this into a function
-    # Load Inference Times from CSV
-    # Assumes combined_results.csv is in the parent of the train_dir (i.e. experiments/combined_results.csv)
-    experiments_root = os.path.dirname(train_dir)
     csv_path = os.path.join(experiments_root, "combined_results.csv")
     latency_map = {}
+    size_map = {}
+    fps_map = {}
+    format_map = {}
 
     if os.path.exists(csv_path):
         try:
@@ -82,15 +55,51 @@ def load_experiments_data(list_dir, train_dir):
                     else {}
                 )
             else:
-                latency_map = {}
-                size_map = {}
-                fps_map = {}
-                format_map = {}
                 print(f"Warning: 'model' column not found in {csv_path}")
         except Exception as e:
             print(f"Error reading inference time CSV: {e}")
     else:
         print(f"Warning: Inference time CSV not found at {csv_path}. Using fallbacks.")
+
+    return latency_map, size_map, fps_map, format_map
+
+
+def load_experiments_data(list_dir, train_dir):
+    """
+    Reads experiment configurations from any 'experiments*/list' folder and
+    corresponding results from the sibling 'train' folder.
+
+    Args:
+        list_dir (str): Directory containing experiment configuration files. Assumes the list
+            directory provided contains the `.yaml` files for each experiment.
+        train_dir (str): Directory containing experiment training results. Assumes the train
+            directory provided contains the subdirectories with each of the list_dir experiment names, and
+            their respective `results.csv` files.
+
+    Returns:
+        pd.DataFrame: DataFrame containing training history for all experiments.
+    """
+    data = []
+
+    # Search for all YAML files in any experiments*/list folder
+    # This allows for experiments_yolo26, experiments_yolo25, etc.
+
+    # Search for all YAML files in any experiments*/list folder
+    # This allows for experiments_yolo26, experiments_yolo25, etc.
+
+    search_path = os.path.join(list_dir, "*.yaml")
+    yaml_files = glob.glob(search_path)
+
+    if not yaml_files:
+        print(f"No experiment configurations found in {search_path}")
+        return pd.DataFrame()
+
+    # Load Inference Times from CSV
+    # Assumes combined_results.csv is in the parent of the train_dir (i.e. experiments/combined_results.csv)
+    experiments_root = os.path.dirname(train_dir)
+    latency_map, size_map, fps_map, format_map = load_inference_metadata(
+        experiments_root
+    )
 
     print(f"Found {len(yaml_files)} experiment configurations.")
 
