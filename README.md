@@ -6,7 +6,8 @@ This package is a quick way of comparing metrics and training results of ultraly
 - Precision-Recall tradeoff, in order to tune the models for a specific use case.
 - View details of the training or metric curves by zooming / hovering to see the detail tooltips.
 
-> [!IMPORTANT]: This repo assumes that the directory structure, file names for experiments and CSV files, and the content of the CSV file containing the inference latency results are in a specific format. this format will be specified below. 
+> [!IMPORTANT] 
+> This repo assumes that the directory structure, file names for experiments and CSV files, and the content of the CSV file containing the inference latency results are in a specific format. this format will be specified below. 
 
 # What you'll see
 
@@ -74,7 +75,8 @@ yolo_args_yaml:
 
 As you see, the names are made by composing the model version, the variant (pretrained or scratch), the size, and the freezing strategy (if any). The rect mode is also added to the name.
 
-> [!NOTE] **Vibe coding alert!**: Part of this code was vibe coded, mainly the parts using `bokeh`, and so it might not be the most performant or the most pythonic way to do it. Just be advised. The code itself is not that long / hard to read, so you are welcome to improve it. 
+> [!NOTE] 
+> **Vibe coding alert!**: Part of this code was vibe coded, mainly the parts using `bokeh`, and so it might not be the most performant or the most pythonic way to do it. Just be advised. The code itself is not that long / hard to read, so you are welcome to improve it. 
 
 
 ## TODOS

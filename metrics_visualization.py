@@ -55,11 +55,11 @@ def load_inference_metadata(experiments_root, csv_name="combined_results.csv"):
                     else {}
                 )
             else:
-                print(f"Warning: 'model' column not found in {csv_path}")
+                warnings.warn(f"'model' column not found in {csv_path}")
         except Exception as e:
-            print(f"Error reading inference time CSV: {e}")
+            warnings.warn(f"Error reading inference time CSV: {e}")
     else:
-        print(f"Warning: Inference time CSV not found at {csv_path}. Using fallbacks.")
+        warnings.warn(f"Inference time CSV not found at {csv_path}.")
 
     return latency_map, size_map, fps_map, format_map
 
@@ -108,7 +108,7 @@ def load_experiments_data(list_dir, train_dir):
             with open(yf, "r") as f:
                 config = yaml.safe_load(f)
         except Exception as e:
-            print(f"Error reading {yf}: {e}")
+            warnings.warn(f"Error reading {yf}: {e}")
             continue
 
         exp_name = config.get("experiment_name")
@@ -134,7 +134,9 @@ def load_experiments_data(list_dir, train_dir):
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
         if not os.path.exists(results_path):
-            print(f"Results not found for experiment: {exp_name} at {results_path}")
+            warnings.warn(
+                f"Results not found for experiment: {exp_name} at {results_path}"
+            )
             continue
 
         try:
@@ -143,8 +145,8 @@ def load_experiments_data(list_dir, train_dir):
             df.columns = df.columns.str.strip()
 
             col_map = {
-                "map50": "metrics/mAP50(B)",
-                "map50_95": "metrics/mAP50-95(B)",
+                "map50": "metrics/mAP@50(B)",
+                "map50_95": "metrics/mAP@50:95(B)",
                 "precision": "metrics/precision(B)",
                 "recall": "metrics/recall(B)",
             }
@@ -176,8 +178,8 @@ def load_experiments_data(list_dir, train_dir):
                 "SizeOrder": SIZE_ORDER.get(model_size, 99),
                 "InferenceTime": inference_time,
                 "InferenceStd": inference_std,
-                "mAP50": best_row[col_map["map50"]],
-                "mAP50_95": best_row[col_map["map50_95"]],
+                "mAP@50": best_row[col_map["map50"]],
+                "mAP@50:95": best_row[col_map["map50_95"]],
                 "Precision": best_row[col_map["precision"]],
                 "Recall": best_row[col_map["recall"]],
                 "Recall": best_row[col_map["recall"]],
@@ -189,7 +191,7 @@ def load_experiments_data(list_dir, train_dir):
             data.append(data_entry)
 
         except Exception as e:
-            print(f"Error processing {exp_name}: {e}")
+            warnings.warn(f"Error processing {exp_name}: {e}")
 
     return pd.DataFrame(data)
 
@@ -213,8 +215,8 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
     output_file(output_path, title="Metrics Visualization")
 
     metrics = [
-        {"col": "mAP50", "title": "mAP 50", "y_axis": "mAP@50"},
-        {"col": "mAP50_95", "title": "mAP 50-95", "y_axis": "mAP@50:95"},
+        {"col": "mAP@50", "title": "mAP@50", "y_axis": "mAP@50"},
+        {"col": "mAP@50:95", "title": "mAP@50:95", "y_axis": "mAP@50:95"},
         {"col": "Precision", "title": "Precision", "y_axis": "Precision"},
         {"col": "Recall", "title": "Recall", "y_axis": "Recall"},
     ]
@@ -222,7 +224,7 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
     # the naming of the series is key to it's managing
     # Sort and Filter Top N
     experiments_dataframe = experiments_dataframe.sort_values(
-        by="mAP50_95", ascending=False
+        by="mAP@50:95", ascending=False
     )
 
     if top_n:
@@ -308,8 +310,8 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
                 <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">@Series (@ModelSize)</div>
                 <div style="color: #aaa; font-size: 0.9em;">
                     Latency: <span style="color: #eee;">@InferenceTime{0.00} ms</span><br>
-                    mAP50: <span style="color: #eee;">@mAP50{0.000}</span><br>
-                    mAP50-95: <span style="color: #eee;">@mAP50_95{0.000}</span><br>
+                    mAP@50: <span style="color: #eee;">@mAP@50{0.000}</span><br>
+                    mAP@50:95: <span style="color: #eee;">@mAP@50:95{0.000}</span><br>
                     Precision: <span style="color: #eee;">@Precision{0.000}</span><br>
                     Recall: <span style="color: #eee;">@Recall{0.000}</span><br>
                     FPS: <span style="color: #eee;">@FPS</span> | Format: <span style="color: #eee;">@Format</span>
