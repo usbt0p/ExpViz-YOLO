@@ -155,6 +155,7 @@ def load_training_history(exp_list_dir, exp_train_dir):
 
     return pd.concat(data_frames, ignore_index=True)
 
+
 def create_grid(df, metrics, axis_type="linear"):
     """
     Creates a 2x2 grid of plots for a given list of metrics.
@@ -171,8 +172,8 @@ def create_grid(df, metrics, axis_type="linear"):
 
     # Colors
     exp_list = sorted(df["Experiment"].unique())
-    #colors = Category10[10] if len(exp_list) <= 10 else Turbo[256]
-    #color_map = {exp: colors[i % len(colors)] for i, exp in enumerate(exp_list)}
+    # colors = Category10[10] if len(exp_list) <= 10 else Turbo[256]
+    # color_map = {exp: colors[i % len(colors)] for i, exp in enumerate(exp_list)}
     color_map = get_color_map(exp_list)
 
     for m in metrics:
@@ -234,6 +235,8 @@ def create_grid(df, metrics, axis_type="linear"):
         legend = Legend(items=legend_items)
         legend.click_policy = "hide"
         legend.label_text_color = "#cccccc"
+        legend.label_text_font_size = "8pt"  # Smaller font
+        legend.spacing = 1  # Tighter spacing
         legend.background_fill_color = "#202020"
         legend.border_line_color = "#444444"
         p.add_layout(legend, "right")
@@ -245,7 +248,7 @@ def create_grid(df, metrics, axis_type="linear"):
     )
 
 
-def create_viz_epoch(training_history_df, output_path):
+def create_viz_epoch(training_history_df, output_path, top_n=None):
     """
     Creates a visualization of training curves for a given DataFrame. Supports linear,
     log and log-error (1-metric) views.
@@ -253,6 +256,7 @@ def create_viz_epoch(training_history_df, output_path):
     Args:
         training_history_df (pandas.DataFrame): DataFrame containing training history for all experiments.
         output_file (str): Path to save the visualization HTML file.
+        top_n (int, optional): Number of top experiments to show based on mAP50_95.
     Returns:
         str: Path to the saved visualization HTML file.
     """
@@ -260,6 +264,20 @@ def create_viz_epoch(training_history_df, output_path):
     if training_history_df.empty:
         print("No data loaded.")
         return
+
+    # Filter Top N
+    if top_n:
+        # Find max mAP50_95 per experiment to rank them
+        ranking = (
+            training_history_df.groupby("Experiment")["mAP50_95"]
+            .max()
+            .sort_values(ascending=False)
+        )
+        top_exps = ranking.index[:top_n].tolist()
+        training_history_df = training_history_df[
+            training_history_df["Experiment"].isin(top_exps)
+        ]
+        print(f"[Training Viz] Filtering top {top_n} experiments")
 
     output_file(output_path, title="Training Curves Visualization")
 

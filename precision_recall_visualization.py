@@ -5,7 +5,8 @@ import pandas as pd
 
 from commons import style_plot, get_color_map
 
-def create_pr_visualization(experiments_dataframe, output_path):
+
+def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
     """
     Creates a scatter plot of Precision vs Recall for provided experiments.
 
@@ -22,6 +23,18 @@ def create_pr_visualization(experiments_dataframe, output_path):
         return
 
     output_file(output_path, title="Precision vs Recall Tradeoff")
+
+    # Filter Top N
+    # We use mAP50_95 for ranking "best" models to filter
+    if top_n:
+        experiments_dataframe = experiments_dataframe.sort_values(
+            by="mAP50_95", ascending=False
+        )
+        top_series = experiments_dataframe["Series"].unique()[:top_n]
+        experiments_dataframe = experiments_dataframe[
+            experiments_dataframe["Series"].isin(top_series)
+        ]
+        print(f"[PR Viz] Filtering top {top_n} series")
 
     # Colors
     series_list = sorted(experiments_dataframe["Series"].unique())
@@ -84,7 +97,11 @@ def create_pr_visualization(experiments_dataframe, output_path):
             ("mAP50", "@mAP50{0.000}"),
             ("Precision", "@Precision{0.000}"),
             ("Recall", "@Recall{0.000}"),
+            ("Recall", "@Recall{0.000}"),
             ("Latency", "@InferenceTime{0.00} ms"),
+            ("Size", "@Size_MB MB"),
+            ("FPS", "@FPS"),
+            ("Format", "@Format"),
         ],
     )
     p.add_tools(hover)

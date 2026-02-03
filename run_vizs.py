@@ -134,14 +134,21 @@ if __name__ == "__main__":
 
     print("Generating Training Visualization...")
     df_train = load_training_history(EXP_LIST_DIR, EXP_TRAIN_DIR)
-    create_viz_epoch(df_train, OUTPUT_DIR / "training_visualization.html")
+
+    # Filter Top N models to avoid clutter (e.g. 15)
+    TOP_N = 15
+    create_viz_epoch(df_train, OUTPUT_DIR / "training_visualization.html", top_n=TOP_N)
 
     print("Generating Metrics Visualization...")
     df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
-    create_visualization(df_metrics, OUTPUT_DIR / "metrics_visualization.html")
+    create_visualization(
+        df_metrics, OUTPUT_DIR / "metrics_visualization.html", top_n=TOP_N
+    )
 
     print("Generating Precision-Recall Visualization...")
-    create_pr_visualization(df_metrics, OUTPUT_DIR / "pr_visualization.html")
+    create_pr_visualization(
+        df_metrics, OUTPUT_DIR / "pr_visualization.html", top_n=TOP_N
+    )
 
     print("Generating Index...")
     generate_index(OUTPUT_DIR)

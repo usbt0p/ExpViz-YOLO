@@ -58,17 +58,35 @@ def load_experiments_data(list_dir, train_dir):
             latency_df = pd.read_csv(csv_path)
             # Ensure column names are clean
             latency_df.columns = latency_df.columns.str.strip()
-            # Create a map: model -> Inference_ms_im
-            if (
-                "model" in latency_df.columns
-                and "Inference_ms_im" in latency_df.columns
-            ):
-                latency_map = latency_df.set_index("model")["Inference_ms_im"].to_dict()
-            else:
-                print(
-                    f"Warning: Expected columns 'model' and 'Inference_ms_im' not found in {csv_path}"
+
+            # Create maps for additional fields
+            if "model" in latency_df.columns:
+                latency_map = (
+                    latency_df.set_index("model")["Inference_ms_im"].to_dict()
+                    if "Inference_ms_im" in latency_df.columns
+                    else {}
                 )
-                print(f"Available columns: {latency_df.columns.tolist()}")
+                size_map = (
+                    latency_df.set_index("model")["Size_MB"].to_dict()
+                    if "Size_MB" in latency_df.columns
+                    else {}
+                )
+                fps_map = (
+                    latency_df.set_index("model")["FPS"].to_dict()
+                    if "FPS" in latency_df.columns
+                    else {}
+                )
+                format_map = (
+                    latency_df.set_index("model")["Format"].to_dict()
+                    if "Format" in latency_df.columns
+                    else {}
+                )
+            else:
+                latency_map = {}
+                size_map = {}
+                fps_map = {}
+                format_map = {}
+                print(f"Warning: 'model' column not found in {csv_path}")
         except Exception as e:
             print(f"Error reading inference time CSV: {e}")
     else:
@@ -129,12 +147,15 @@ def load_experiments_data(list_dir, train_dir):
             best_row = df.loc[best_idx]
 
             # Get Latency: Try exact match, or fallback to size-based default
-            # precise matching logic might be needed if exp_name doesn't match model name exactly
-            if exp_name in latency_map:
-                inference_time = latency_map[exp_name]
-            else:
+            inference_time = latency_map.get(exp_name)
+            if inference_time is None:
                 warnings.warn(f"Latency not found for {exp_name}, skipping.")
                 inference_time = None
+
+            # Get other metadata
+            size_mb = size_map.get(exp_name, "N/A")
+            fps = fps_map.get(exp_name, "N/A")
+            fmt = format_map.get(exp_name, "N/A")
 
             # We don't have std in the CSV, so setting to 0 or None
             inference_std = 0.0
@@ -150,7 +171,11 @@ def load_experiments_data(list_dir, train_dir):
                 "mAP50_95": best_row[col_map["map50_95"]],
                 "Precision": best_row[col_map["precision"]],
                 "Recall": best_row[col_map["recall"]],
+                "Recall": best_row[col_map["recall"]],
                 "Epoch": best_row["epoch"],
+                "Size_MB": size_mb,
+                "FPS": fps,
+                "Format": fmt,
             }
             data.append(data_entry)
 
@@ -159,7 +184,8 @@ def load_experiments_data(list_dir, train_dir):
 
     return pd.DataFrame(data)
 
-def create_visualization(experiments_dataframe, output_path):
+
+def create_visualization(experiments_dataframe, output_path, top_n=None):
     """
     Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
 
@@ -185,8 +211,18 @@ def create_visualization(experiments_dataframe, output_path):
     ]
 
     # the naming of the series is key to it's managing
-    # TODO sort by maAP50
-    experiments_dataframe = experiments_dataframe.sort_values(by="mAP50", ascending=False)
+    # Sort and Filter Top N
+    experiments_dataframe = experiments_dataframe.sort_values(
+        by="mAP50_95", ascending=False
+    )
+
+    if top_n:
+        top_series = experiments_dataframe["Series"].unique()[:top_n]
+        experiments_dataframe = experiments_dataframe[
+            experiments_dataframe["Series"].isin(top_series)
+        ]
+        print(f"Filtering top {top_n} series: {top_series}")
+
     series_list = experiments_dataframe["Series"].unique()
     color_map = get_color_map(series_list)
 
@@ -251,7 +287,9 @@ def create_visualization(experiments_dataframe, output_path):
             all_renderers.append(scatter_fill)
             all_renderers.append(scatter_outline)
             legend_items.append(
-                LegendItem(label=series_name, renderers=[line, scatter_fill, scatter_outline])
+                LegendItem(
+                    label=series_name, renderers=[line, scatter_fill, scatter_outline]
+                )
             )
 
         # Add Tooltips - ensure we target ALL renderers
@@ -267,6 +305,9 @@ def create_visualization(experiments_dataframe, output_path):
                 ("Precision", "@Precision{0.000}"),
                 ("Recall", "@Recall{0.000}"),
                 ("Epoch", "@Epoch"),
+                ("Size", "@Size_MB MB"),
+                ("FPS", "@FPS"),
+                ("Format", "@Format"),
             ],
         )
         p.add_tools(hover)
