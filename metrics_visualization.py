@@ -15,11 +15,11 @@ from commons import get_color_map, style_plot
 SIZE_ORDER = {"n": 0, "s": 1, "m": 2, "l": 3, "x": 4}
 
 
-def load_inference_metadata(experiments_root):
+def load_inference_metadata(experiments_root, csv_name="combined_results.csv"):
     """
     Loads inference metadata (latency, size, fps, format) from combined_results.csv.
     """
-    csv_path = os.path.join(experiments_root, "combined_results.csv")
+    csv_path = os.path.join(experiments_root, csv_name)
     latency_map = {}
     size_map = {}
     fps_map = {}
