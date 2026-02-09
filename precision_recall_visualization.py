@@ -19,7 +19,9 @@ def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
     """
 
     if experiments_dataframe.empty:
-        print("No data loaded for PR Viz. Aborting.")
+        print("No data loaded. Aborting.")
+        with open(output_path, "w", encoding='utf-8') as err_html:
+            err_html.write("<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Georgia', 'Times New Roman', serif;color:#666;'><div><h2>No data loaded</h2><p>The metrics dataframe is empty.</p></div></body></html>")
         return
 
     output_file(output_path, title="Precision vs Recall Tradeoff")

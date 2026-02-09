@@ -2,7 +2,7 @@ from pathlib import Path
 import os
 
 from training_visualization import load_training_history, create_viz_epoch
-from metrics_visualization import load_experiments_data, create_visualization
+from metrics_visualization import load_experiments_data, create_metrics_visualization
 from precision_recall_visualization import create_pr_visualization
 
 import webbrowser
@@ -127,8 +127,9 @@ def serve_results(output_dir: Path, port=8000):
 if __name__ == "__main__":
     # Paths assuming script is run from project root
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    EXP_LIST_DIR = base_dir / "experiments" / "list"
-    EXP_TRAIN_DIR = base_dir / "experiments" / "train"
+    exp = "compressed_yolo26_imgsz_exps"
+    EXP_LIST_DIR = base_dir / exp / "list"
+    EXP_TRAIN_DIR = base_dir / exp / "train"
     OUTPUT_DIR = base_dir / "results"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -141,7 +142,7 @@ if __name__ == "__main__":
 
     print("Generating Metrics Visualization...")
     df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
-    create_visualization(
+    create_metrics_visualization(
         df_metrics, OUTPUT_DIR / "metrics_visualization.html", top_n=TOP_N
     )
 

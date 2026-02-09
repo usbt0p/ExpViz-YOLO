@@ -3,4 +3,7 @@ __pycache__
 
 experiments_yolo26
 experiments
+compressed_yolo26_imgsz_exps
+compressed_yolo26_p2_p6_exps
+*.zip
 *.html

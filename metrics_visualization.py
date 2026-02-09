@@ -117,19 +117,12 @@ def load_experiments_data(list_dir, train_dir):
 
         # Extract experiment metadata
         model_size = config.get("model_size", "Unknown")
-        is_pretrained = config.get("pretrained", False)
-        model_version = config.get("model_version", "Unknown")
-        freezing_strategy = config.get("freeze_layers", None)
 
-        # Determine Series Name
-        # the naming of the series is key to it's managing: we'll plot all series with unique names
-        rect_mode = config.get("rect_mode", False)
-        variant = "Pretr." if is_pretrained else "Scratch"
-        if freezing_strategy:
-            variant += f" {freezing_strategy}"
-        series_name = f"{model_version.capitalize()} {variant}"
-        if rect_mode:
-            series_name += " rect"
+        # this has to support all naming differences and ensure there's no collisions in order
+        # for the legend to work properly
+        series_name = exp_name.replace("_", " "
+                ).replace("pretrained", "pret.").replace("backbone", "back."
+                ).replace("rectFalse", "").replace("rectTrue", "rect").replace("  ", " ")
 
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
@@ -196,7 +189,7 @@ def load_experiments_data(list_dir, train_dir):
     return pd.DataFrame(data)
 
 
-def create_visualization(experiments_dataframe, output_path, top_n=None):
+def create_metrics_visualization(experiments_dataframe, output_path, top_n=None):
     """
     Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
 
@@ -210,6 +203,8 @@ def create_visualization(experiments_dataframe, output_path, top_n=None):
 
     if experiments_dataframe.empty:
         print("No data loaded. Aborting.")
+        with open(output_path, "w", encoding='utf-8') as err_html:
+            err_html.write("<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Georgia', 'Times New Roman', serif;color:#666;'><div><h2>No data loaded</h2><p>The metrics dataframe is empty.</p></div></body></html>")
         return
 
     output_file(output_path, title="Metrics Visualization")

@@ -55,6 +55,7 @@ def load_training_history(exp_list_dir, exp_train_dir):
         exp_name = config.get("experiment_name")
         if not exp_name:
             continue
+        
 
         model_size = config.get("model_size", "n")
         is_pretrained = config.get("pretrained", False)
@@ -84,18 +85,15 @@ def load_training_history(exp_list_dir, exp_train_dir):
 
             if not all(c in df.columns for c in col_map.values()):
                 continue
-
-            # Label Generation
-            variant = "Pret." if is_pretrained else "Scratch"
-            if freezing_strategy:
-                variant += f" {freezing_strategy}"
-            clean_name = f"{model_version.capitalize()}{model_size} {variant}"
-            if rect_mode:
-                clean_name += " rect"
+            
+            # this has to support all naming differences and ensure there's no collisions in order
+            # for the legend to work properly
 
             df_exp = df.copy()
             df_exp["Experiment"] = exp_name
-            df_exp["Label"] = clean_name
+            df_exp["Label"] = exp_name.replace("_", " "
+                ).replace("pretrained", "pret.").replace("backbone", "back."
+                ).replace("rectFalse", "").replace("rectTrue", "rect").replace("  ", " ")
 
             df_exp.rename(
                 columns={
@@ -262,7 +260,9 @@ def create_viz_epoch(training_history_df, output_path, top_n=None):
     """
 
     if training_history_df.empty:
-        print("No data loaded.")
+        print("No data loaded. Aborting.")
+        with open(output_path, "w", encoding='utf-8') as err_html:
+            err_html.write("<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Georgia', 'Times New Roman', serif;color:#666;'><div><h2>No data loaded</h2><p>The training dataframe is empty.</p></div></body></html>")
         return
 
     # Filter Top N

@@ -82,7 +82,7 @@ As you see, the names are made by composing the model version, the variant (pret
 ## TODOS
 - [x] Add a new plot to represent the tradeoff between precision and recall
 
-- [ ] CORRECT THE NAMING IN THE COMBINED RESULTS SCRIPT!!!!
+- [X] CORRECT THE NAMING IN THE COMBINED RESULTS SCRIPT!!!!
 
 - [x] Integrate with the actual inference time results:
     - [ ] See if the results already output a validation metrics
@@ -100,7 +100,7 @@ As you see, the names are made by composing the model version, the variant (pret
 
 - [ ] Scale should auto-adjust dynamically depending on the minimum Y axis value from each series, and also when removing some of the plots by clicking the legend
 
-- [ ] make tooltip textbox slightly transparent to see the background behind
+- [X] make tooltip textbox slightly transparent to see the background behind
 
 - [ ] add a "hide everything" button to the legend
 
