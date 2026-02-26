@@ -42,7 +42,7 @@ experiments/
             └── ...
 ```
 
-The `combined_results.csv` file is expected to have that name (change it if you will) and the following columns:
+The `combined_results.csv` file is expected to have that name by default, bus it's a parameter in `load_experiments_data`, so change it if you will. It should have the following columns:
 ```csv
 model,Format,Size_MB,mAP50,Inference_ms_im,FPS
 yolov8n_pretrained_full_rectFalse,TensorRT,13.2,0.77133,18.72,53.41
@@ -51,12 +51,20 @@ yolov8n_pretrained_head_rectTrue,TensorRT,13.1,0.73223,19.61,50.99
 ...
 ```
 
+> [!IMPORTANT]
+> The name of the experiment is important! It must be unique to avoid collisions. 
+> It must also (for now) follow the naming convention:
+>
+>`<model_version><variant><size>_<freezing_strategy>_<rect_mode>_<optional_extra_descriptors>`
+>
+> The `<optional_extra_descriptors>` can be anything, but it must not contain underscores.
+
 The experiment metadata in the `list/*.yaml` files is expected to have the following format:
 ```yaml
 batch_size: 0.9
 early_stop_epochs: 16
 epochs: 346
-experiment_name: yolo11m_pretrained_backbone_rectFalse
+experiment_name: yolo11m_pretrained_backbone_rectFalse_imgsz800
 freeze_layers: backbone
 model_size: m
 model_version: yolo11
@@ -74,6 +82,8 @@ yolo_args_yaml:
 ``` 
 
 As you see, the names are made by composing the model version, the variant (pretrained or scratch), the size, and the freezing strategy (if any). The rect mode is also added to the name.
+
+
 
 > [!NOTE] 
 > **Vibe coding alert!**: Part of this code was vibe coded, mainly the parts using `bokeh`, and so it might not be the most performant or the most pythonic way to do it. Just be advised. The code itself is not that long / hard to read, so you are welcome to improve it. 
