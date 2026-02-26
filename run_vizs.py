@@ -127,7 +127,7 @@ def serve_results(output_dir: Path, port=8000):
 if __name__ == "__main__":
     # Paths assuming script is run from project root
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    exp = "compressed_yolo26_imgsz_exps"
+    exp =  "compressed_yolo26_imgsz_exps" #
     EXP_LIST_DIR = base_dir / exp / "list"
     EXP_TRAIN_DIR = base_dir / exp / "train"
     OUTPUT_DIR = base_dir / "results"
@@ -137,11 +137,15 @@ if __name__ == "__main__":
     df_train = load_training_history(EXP_LIST_DIR, EXP_TRAIN_DIR)
 
     # Filter Top N models to avoid clutter (e.g. 15)
-    TOP_N = 15
+    TOP_N = 150
     create_viz_epoch(df_train, OUTPUT_DIR / "training_visualization.html", top_n=TOP_N)
 
     print("Generating Metrics Visualization...")
-    df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR)
+    df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR, "bench_imgsz.csv")
+
+    assert df_metrics is not None
+    print(df_metrics)
+
     create_metrics_visualization(
         df_metrics, OUTPUT_DIR / "metrics_visualization.html", top_n=TOP_N
     )

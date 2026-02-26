@@ -4,7 +4,14 @@ import yaml
 import pandas as pd
 import numpy as np
 from bokeh.plotting import figure, output_file, save
-from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
+from bokeh.models import (
+    ColumnDataSource,
+    HoverTool,
+    Legend,
+    LegendItem,
+    RadioGroup,
+    CustomJS,
+)
 from bokeh.layouts import gridplot, row, column
 from bokeh.io import curdoc
 import warnings
@@ -64,7 +71,7 @@ def load_inference_metadata(experiments_root, csv_name="combined_results.csv"):
     return latency_map, size_map, fps_map, format_map
 
 
-def load_experiments_data(list_dir, train_dir):
+def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv"):
     """
     Reads experiment configurations from any 'experiments*/list' folder and
     corresponding results from the sibling 'train' folder.
@@ -98,7 +105,7 @@ def load_experiments_data(list_dir, train_dir):
     # Assumes combined_results.csv is in the parent of the train_dir (i.e. experiments/combined_results.csv)
     experiments_root = os.path.dirname(train_dir)
     latency_map, size_map, fps_map, format_map = load_inference_metadata(
-        experiments_root
+        experiments_root, results_csv
     )
 
     print(f"Found {len(yaml_files)} experiment configurations.")
@@ -117,12 +124,31 @@ def load_experiments_data(list_dir, train_dir):
 
         # Extract experiment metadata
         model_size = config.get("model_size", "Unknown")
+        if model_size == "Unknown":
+            warnings.warn(f"Unknown model size for experiment: {exp_name}")
+        is_pretrained = config.get("pretrained", False)
+        model_version = config.get("model_version", "Unknown")
+        freezing_strategy = config.get("freeze_layers", None)
 
         # this has to support all naming differences and ensure there's no collisions in order
         # for the legend to work properly
-        series_name = exp_name.replace("_", " "
-                ).replace("pretrained", "pret.").replace("backbone", "back."
-                ).replace("rectFalse", "").replace("rectTrue", "rect").replace("  ", " ")
+
+        variant = "Pretr." if is_pretrained else "Scratch"
+        if freezing_strategy:
+            variant += f" {freezing_strategy}"
+        series_name = f"{model_version.capitalize()} {variant}"
+
+        rect_mode = config.get("rect_mode", False)
+        if rect_mode:
+            series_name += " rect"
+
+        # TODO: make this more robust, like reading from the yaml instead of parsing the name
+        # there is an old and a new naming style
+        # for ex: yolo26m_freeze-backbone_rectFalse_size512
+        # old one is: yolo26s_pretrained_full_rectFalse_size800
+        # we need to get the additional differentiators like size800 that the new one added
+        diff = exp_name.split("rect")[1].split("_")[1]
+        series_name += f" {diff.replace("size", "sz")}"
 
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
@@ -138,8 +164,8 @@ def load_experiments_data(list_dir, train_dir):
             df.columns = df.columns.str.strip()
 
             col_map = {
-                "map50": "metrics/mAP@50(B)",
-                "map50_95": "metrics/mAP@50:95(B)",
+                "map50": "metrics/mAP50(B)",
+                "map50_95": "metrics/mAP50-95(B)",
                 "precision": "metrics/precision(B)",
                 "recall": "metrics/recall(B)",
             }
@@ -158,7 +184,7 @@ def load_experiments_data(list_dir, train_dir):
 
             # Get other metadata
             size_mb = size_map.get(exp_name, "N/A")
-            fps = fps_map.get(exp_name, "N/A")
+            fps = fps_map.get(exp_name, None)
             fmt = format_map.get(exp_name, "N/A")
 
             # We don't have std in the CSV, so setting to 0 or None
@@ -171,10 +197,9 @@ def load_experiments_data(list_dir, train_dir):
                 "SizeOrder": SIZE_ORDER.get(model_size, 99),
                 "InferenceTime": inference_time,
                 "InferenceStd": inference_std,
-                "mAP@50": best_row[col_map["map50"]],
-                "mAP@50:95": best_row[col_map["map50_95"]],
+                "mAP50": best_row[col_map["map50"]],
+                "mAP50_95": best_row[col_map["map50_95"]],
                 "Precision": best_row[col_map["precision"]],
-                "Recall": best_row[col_map["recall"]],
                 "Recall": best_row[col_map["recall"]],
                 "Epoch": best_row["epoch"],
                 "Size_MB": size_mb,
@@ -189,67 +214,23 @@ def load_experiments_data(list_dir, train_dir):
     return pd.DataFrame(data)
 
 
-def create_metrics_visualization(experiments_dataframe, output_path, top_n=None):
-    """
-    Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
-
-    Args:
-        experiments_dataframe (pandas.DataFrame): DataFrame containing training history for all experiments.
-        output_file (str): Path to save the visualization HTML file.
-
-    Returns:
-        str: Path to the saved visualization HTML file.
-    """
-
-    if experiments_dataframe.empty:
-        print("No data loaded. Aborting.")
-        with open(output_path, "w", encoding='utf-8') as err_html:
-            err_html.write("<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Georgia', 'Times New Roman', serif;color:#666;'><div><h2>No data loaded</h2><p>The metrics dataframe is empty.</p></div></body></html>")
-        return
-
-    output_file(output_path, title="Metrics Visualization")
-
-    metrics = [
-        {"col": "mAP@50", "title": "mAP@50", "y_axis": "mAP@50"},
-        {"col": "mAP@50:95", "title": "mAP@50:95", "y_axis": "mAP@50:95"},
-        {"col": "Precision", "title": "Precision", "y_axis": "Precision"},
-        {"col": "Recall", "title": "Recall", "y_axis": "Recall"},
-    ]
-
-    # the naming of the series is key to it's managing
-    # Sort and Filter Top N
-    experiments_dataframe = experiments_dataframe.sort_values(
-        by="mAP@50:95", ascending=False
-    )
-
-    if top_n:
-        top_series = experiments_dataframe["Series"].unique()[:top_n]
-        experiments_dataframe = experiments_dataframe[
-            experiments_dataframe["Series"].isin(top_series)
-        ]
-        print(f"Filtering top {top_n} series: {top_series}")
-
-    series_list = experiments_dataframe["Series"].unique()
-    color_map = get_color_map(series_list)
-
+def create_grid_plots(df, metrics, series_list, color_map, x_col, x_label):
     plots = []
     renderer_map = {}
 
     for m in metrics:
         p = figure(
-            title=f"{m['title']} vs Latency",
+            title=f"{m['title']} vs {x_label.split(' ')[0]}",
             width_policy="max",
             height=400,
             tools="pan,box_zoom,wheel_zoom,reset,save",
             active_scroll="wheel_zoom",
         )
-        style_plot(p, "Latency (ms)", m["y_axis"], m["title"])
+        style_plot(p, x_label, m["y_axis"], m["title"])
 
         all_renderers = []
         for series_name in series_list:
-            subset = experiments_dataframe[
-                experiments_dataframe["Series"] == series_name
-            ].sort_values("SizeOrder")
+            subset = df[df["Series"] == series_name].sort_values("SizeOrder")
 
             if subset.empty:
                 continue
@@ -259,7 +240,7 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
 
             # Draw Line
             line = p.line(
-                x="InferenceTime",
+                x=x_col,
                 y=m["col"],
                 source=source,
                 line_width=2,
@@ -270,7 +251,7 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
             # Draw Points (Scatter)
             # Outer circle for effect
             scatter_outline = p.scatter(
-                x="InferenceTime",
+                x=x_col,
                 y=m["col"],
                 source=source,
                 size=12,
@@ -280,7 +261,7 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
             )
             # Inner circle
             scatter_fill = p.scatter(
-                x="InferenceTime",
+                x=x_col,
                 y=m["col"],
                 source=source,
                 size=8,
@@ -305,8 +286,8 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
                 <div style="color: #fff; font-weight: bold; margin-bottom: 5px;">@Series (@ModelSize)</div>
                 <div style="color: #aaa; font-size: 0.9em;">
                     Latency: <span style="color: #eee;">@InferenceTime{0.00} ms</span><br>
-                    mAP@50: <span style="color: #eee;">@mAP@50{0.000}</span><br>
-                    mAP@50:95: <span style="color: #eee;">@mAP@50:95{0.000}</span><br>
+                    mAP50: <span style="color: #eee;">@mAP50{0.000}</span><br>
+                    mAP50_95: <span style="color: #eee;">@mAP50_95{0.000}</span><br>
                     Precision: <span style="color: #eee;">@Precision{0.000}</span><br>
                     Recall: <span style="color: #eee;">@Recall{0.000}</span><br>
                     FPS: <span style="color: #eee;">@FPS</span> | Format: <span style="color: #eee;">@Format</span>
@@ -317,8 +298,78 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
         p.add_tools(hover)
         plots.append(p)
 
+    return (
+        gridplot(
+            [[plots[0], plots[1]], [plots[2], plots[3]]], sizing_mode="stretch_width"
+        ),
+        renderer_map,
+    )
+
+
+def create_metrics_visualization(experiments_dataframe, output_path, top_n=None):
+    """
+    Creates a visualization of metrics for a given DataFrame, metric VS latency in pareto charts.
+
+    Args:
+        experiments_dataframe (pandas.DataFrame): DataFrame containing training history for all experiments.
+        output_file (str): Path to save the visualization HTML file.
+
+    Returns:
+        str: Path to the saved visualization HTML file.
+    """
+
+    if experiments_dataframe.empty:
+        print("No data loaded. Aborting.")
+        with open(output_path, "w", encoding="utf-8") as err_html:
+            err_html.write(
+                "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;font-family:'Georgia', 'Times New Roman', serif;color:#666;'><div><h2>No data loaded</h2><p>The metrics dataframe is empty.</p></div></body></html>"
+            )
+        return
+
+    output_file(output_path, title="Metrics Visualization")
+
+    metrics = [
+        {"col": "mAP50", "title": "mAP50", "y_axis": "mAP50"},
+        {"col": "mAP50_95", "title": "mAP50_95", "y_axis": "mAP50_95"},
+        {"col": "Precision", "title": "Precision", "y_axis": "Precision"},
+        {"col": "Recall", "title": "Recall", "y_axis": "Recall"},
+    ]
+
+    # Sort and Filter Top N
+    experiments_dataframe = experiments_dataframe.sort_values(
+        by="mAP50_95", ascending=False
+    )
+
+    if top_n:
+        top_series = experiments_dataframe["Series"].unique()[:top_n]
+        experiments_dataframe = experiments_dataframe[
+            experiments_dataframe["Series"].isin(top_series)
+        ]
+        print(f"Filtering top {top_n} series: {top_series}")
+
+    series_list = experiments_dataframe["Series"].unique()
+    color_map = get_color_map(series_list)
+
+    grid_fps, map_fps = create_grid_plots(
+        experiments_dataframe,
+        metrics,
+        series_list,
+        color_map,
+        x_col="FPS",
+        x_label="FPS",
+    )
+
+    grid_lat, map_lat = create_grid_plots(
+        experiments_dataframe,
+        metrics,
+        series_list,
+        color_map,
+        x_col="InferenceTime",
+        x_label="Latency (ms)",
+    )
+    grid_fps.visible = False
+
     # Construct Global Legend
-    # Calculate height based on total labels
     height = 50 + len(series_list) * 20
     p_legend = figure(
         width=250,
@@ -337,11 +388,10 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
     legend_items = []
     for series_name in series_list:
         c = color_map[series_name]
-        # Dummy renderers in p_legend for display
         d_line = p_legend.line(x=[2], y=[2], color=c, line_width=2)
         d_scatter = p_legend.scatter(x=[2], y=[2], color=c, size=8)
 
-        real_renderers = renderer_map.get(series_name, [])
+        real_renderers = map_fps.get(series_name, []) + map_lat.get(series_name, [])
         legend_items.append(
             LegendItem(
                 label=series_name, renderers=real_renderers + [d_line, d_scatter]
@@ -359,15 +409,39 @@ def create_metrics_visualization(experiments_dataframe, output_path, top_n=None)
     legend.location = "top_left"
     p_legend.add_layout(legend)
 
-    # Layout: Grid 2x2 on top, or side by side
-    grid = gridplot(
-        [[plots[0], plots[1]], [plots[2], plots[3]]], sizing_mode="stretch_width"
+    # Toggle Control
+    radio_group = RadioGroup(
+        labels=["FPS", "Latency"],
+        active=1,
+        inline=True,
     )
-    layout = row(grid, p_legend, sizing_mode="stretch_width")
 
-    # Final styling: background color of the whole page
+    # JavaScript Callback
+    callback = CustomJS(
+        args=dict(g_fps=grid_fps, g_lat=grid_lat),
+        code="""
+        g_fps.visible = false;
+        g_lat.visible = false;
+        
+        if (cb_obj.active == 0) {
+            g_fps.visible = true;
+        } else {
+            g_lat.visible = true;
+        }
+    """,
+    )
+    radio_group.js_on_change("active", callback)
+
+    # Layout
+    grids_col = column(grid_fps, grid_lat, sizing_mode="stretch_width")
+    layout = column(
+        row(radio_group, sizing_mode="fixed", width=450),
+        row(grids_col, p_legend, sizing_mode="stretch_width"),
+        sizing_mode="stretch_width",
+    )
+
+    # Final styling
     curdoc().theme = "dark_minimal"
-
     out = save(layout)
 
     print(f"Visualization saved to {out}")
