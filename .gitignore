@@ -1,9 +1,12 @@
 .venv
+.python-version
 __pycache__
 
 experiments_yolo26
-experiments
-compressed_yolo26_imgsz_exps
-compressed_yolo26_p2_p6_exps
+experiments*
+compressed_*
+bench_*
+benchmark_*
+
 *.zip
 *.html

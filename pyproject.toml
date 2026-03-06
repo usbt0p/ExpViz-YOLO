@@ -1,0 +1,14 @@
+[project]
+name = "expviz-yolo"
+version = "0.1.0"
+description = "Visualize the results of Ultralytics YOLO experiments in detail and serve them via HTTP. Supports training, metric VS latency and precision-recall curves with tooltips and zooming."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "bokeh>=3.8.2",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.8",
+]
