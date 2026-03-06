@@ -66,7 +66,8 @@ def load_inference_metadata(experiments_root, csv_name="combined_results.csv"):
         except Exception as e:
             warnings.warn(f"Error reading inference time CSV: {e}")
     else:
-        warnings.warn(f"Inference time CSV not found at {csv_path}.")
+        #warnings.warn(f"Inference time CSV not found at {csv_path}.")
+        print(f"WARNING ⚠️ Inference time CSV not found at {csv_path}.")
 
     return latency_map, size_map, fps_map, format_map
 
@@ -142,19 +143,17 @@ def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv
         if rect_mode:
             series_name += " rect"
 
-        # TODO: make this more robust, like reading from the yaml instead of parsing the name
-        # there is an old and a new naming style
-        # for ex: yolo26m_freeze-backbone_rectFalse_size512
-        # old one is: yolo26s_pretrained_full_rectFalse_size800
-        # we need to get the additional differentiators like size800 that the new one added
-        diff = exp_name.split("rect")[1].split("_")[1]
-        series_name += f" {diff.replace("size", "sz")}"
+        # Some names carry a size discriminator (e.g. _size512) after "rect"; omit it gracefully when absent
+        parts = exp_name.split("rect")[1].split("_")
+        diff = parts[1] if len(parts) > 1 else ""
+        if diff:
+            series_name += f" {diff.replace('size', 'sz')}"
 
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
         if not os.path.exists(results_path):
-            warnings.warn(
-                f"Results not found for experiment: {exp_name} at {results_path}"
+            print(
+                f"WARNING ⚠️ Results not found for experiment: {exp_name} at {results_path}"
             )
             continue
 
@@ -179,7 +178,8 @@ def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv
             # Get Latency: Try exact match, or fallback to size-based default
             inference_time = latency_map.get(exp_name)
             if inference_time is None:
-                warnings.warn(f"Latency not found for {exp_name}, skipping.")
+                #warnings.warn(f"Latency not found for {exp_name}, skipping.")
+                print(f"WARNING ⚠️ Latency not found for {exp_name}, setting to None.")
                 inference_time = None
 
             # Get other metadata

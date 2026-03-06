@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import pandas as pd
 
 from training_visualization import load_training_history, create_viz_epoch
 from metrics_visualization import load_experiments_data, create_metrics_visualization
@@ -123,29 +124,44 @@ def serve_results(output_dir: Path, port=8000):
             print("\nStopping server.")
             httpd.server_close()
 
-
 if __name__ == "__main__":
-    # Paths assuming script is run from project root
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
-    exp =  "compressed_yolo26_imgsz_exps" #
-    EXP_LIST_DIR = base_dir / exp / "list"
-    EXP_TRAIN_DIR = base_dir / exp / "train"
+
+    # Each entry points to one group of experiments. The benchmark CSV is
+    # looked up relative to the parent of train_dir (see load_experiments_data).
+    exps = [
+        {
+            "list_dir": base_dir / "compressed_yolo26_imgsz_exps" / "list",
+            "train_dir": base_dir / "compressed_yolo26_imgsz_exps" / "train",
+            "bench_csv": "combined_results.csv",
+        },
+        {
+            "list_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "experiments_yolo26_p2_segundo_intento" / "list",
+            "train_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "experiments_yolo26_p2_segundo_intento" / "train",
+            "bench_csv": "combined_results.csv",
+        },
+    ]
+
     OUTPUT_DIR = base_dir / "results"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    print("Generating Training Visualization...")
-    df_train = load_training_history(EXP_LIST_DIR, EXP_TRAIN_DIR)
+    # Load each group separately and combine so all experiments appear in a single plot
+    dfs_train, dfs_metrics = [], []
+    for exp in exps:
+        dfs_train.append(load_training_history(exp["list_dir"], exp["train_dir"]))
+        dfs_metrics.append(load_experiments_data(exp["list_dir"], exp["train_dir"], exp["bench_csv"]))
+
+    df_train = pd.concat(dfs_train, ignore_index=True)
+    df_metrics = pd.concat(dfs_metrics, ignore_index=True)
 
     # Filter Top N models to avoid clutter (e.g. 15)
     TOP_N = 150
+
+    print("Generating Training Visualization...")
     create_viz_epoch(df_train, OUTPUT_DIR / "training_visualization.html", top_n=TOP_N)
 
     print("Generating Metrics Visualization...")
-    df_metrics = load_experiments_data(EXP_LIST_DIR, EXP_TRAIN_DIR, "bench_imgsz.csv")
-
-    assert df_metrics is not None
     print(df_metrics)
-
     create_metrics_visualization(
         df_metrics, OUTPUT_DIR / "metrics_visualization.html", top_n=TOP_N
     )
