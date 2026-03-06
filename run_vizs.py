@@ -127,46 +127,56 @@ def serve_results(output_dir: Path, port=8000):
 if __name__ == "__main__":
     base_dir = Path(os.path.dirname(os.path.abspath(__file__)))
 
-    # Each entry points to one group of experiments. The benchmark CSV is
-    # looked up relative to the parent of train_dir (see load_experiments_data).
-    exps = [
+    # fp32 was benchmarked separately per experiment group; all other precision
+    # variants were aggregated into a single CSV covering every group.
+
+    # use this structure when you have *distinct experiments with one CSV each*, but want
+    # them all visualized together in the same plots (e.g. to compare them side by side)
+    EXP_GROUPS = [
         {
             "list_dir": base_dir / "compressed_yolo26_imgsz_exps" / "list",
             "train_dir": base_dir / "compressed_yolo26_imgsz_exps" / "train",
-            "bench_csv": "combined_results.csv",
+            "fp32_csv":  base_dir / "benchmark_results_imgsz" / "combined_results.csv",
         },
         {
-            "list_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "experiments_yolo26_p2_segundo_intento" / "list",
-            "train_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "experiments_yolo26_p2_segundo_intento" / "train",
-            "bench_csv": "combined_results.csv",
+            "list_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "list",
+            "train_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "train",
+            "fp32_csv":  base_dir / "benchmark_results_p2_p6" / "combined_results.csv",
         },
+    ]
+
+    # These CSVs already contain results from all experiment groups.
+    # use these when you have several experiments that share the same 
+    # benchmark results in *one CSV* file 
+    SHARED_BENCH_VARIANTS = [
+        {"label": "halfp",      "csv": base_dir / "benchmark_halfp"       / "combined_results.csv"},
+        {"label": "halfp_int8", "csv": base_dir / "benchmark_halfp_int8"  / "combined_results.csv"},
+        {"label": "int8",       "csv": base_dir / "benchmark_int8"        / "combined_results.csv"},
     ]
 
     OUTPUT_DIR = base_dir / "results"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Load each group separately and combine so all experiments appear in a single plot
-    dfs_train, dfs_metrics = [], []
-    for exp in exps:
-        dfs_train.append(load_training_history(exp["list_dir"], exp["train_dir"]))
-        dfs_metrics.append(load_experiments_data(exp["list_dir"], exp["train_dir"], exp["bench_csv"]))
-
-    df_train = pd.concat(dfs_train, ignore_index=True)
-    df_metrics = pd.concat(dfs_metrics, ignore_index=True)
-
-    # Filter Top N models to avoid clutter (e.g. 15)
     TOP_N = 150
 
     print("Generating Training Visualization...")
+    dfs_train = [load_training_history(g["list_dir"], g["train_dir"]) for g in EXP_GROUPS]
+    df_train = pd.concat(dfs_train, ignore_index=True)
     create_viz_epoch(df_train, OUTPUT_DIR / "training_visualization.html", top_n=TOP_N)
 
-    print("Generating Metrics Visualization...")
+    print("Generating Metrics / PR Visualizations...")
+    dfs_metrics = (
+        # fp32: each group has its own dedicated bench CSV
+        [load_experiments_data(g["list_dir"], g["train_dir"], g["fp32_csv"], bench_label="fp32") for g in EXP_GROUPS]
+        # shared variants: one CSV already covers all groups
+        + [load_experiments_data(g["list_dir"], g["train_dir"], v["csv"], bench_label=v["label"]) for g in EXP_GROUPS for v in SHARED_BENCH_VARIANTS]
+    )
+    df_metrics = pd.concat(dfs_metrics, ignore_index=True)
     print(df_metrics)
+
     create_metrics_visualization(
         df_metrics, OUTPUT_DIR / "metrics_visualization.html", top_n=TOP_N
     )
-
-    print("Generating Precision-Recall Visualization...")
     create_pr_visualization(
         df_metrics, OUTPUT_DIR / "pr_visualization.html", top_n=TOP_N
     )
