@@ -7,6 +7,7 @@ experiments*
 compressed_*
 bench_*
 benchmark_*
+PUTOS_BENCHS
 
 *.zip
 *.html
