@@ -9,5 +9,7 @@ bench_*
 benchmark_*
 PUTOS_BENCHS
 
+results/
 *.zip
 *.html
+!index.html
