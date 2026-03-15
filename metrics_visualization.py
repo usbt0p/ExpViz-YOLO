@@ -72,7 +72,7 @@ def load_inference_metadata(experiments_root, csv_name="combined_results.csv"):
     return latency_map, size_map, fps_map, format_map
 
 
-def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv"):
+def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv", bench_label=None):
     """
     Reads experiment configurations from any 'experiments*/list' folder and
     corresponding results from the sibling 'train' folder.
@@ -148,6 +148,10 @@ def load_experiments_data(list_dir, train_dir, results_csv="combined_results.csv
         diff = parts[1] if len(parts) > 1 else ""
         if diff:
             series_name += f" {diff.replace('size', 'sz')}"
+
+        # Distinguish same experiment benchmarked under different precision modes
+        if bench_label:
+            series_name += f" [{bench_label}]"
 
         results_path = os.path.join(train_dir, exp_name, "results.csv")
 
@@ -235,14 +239,20 @@ def create_grid_plots(df, metrics, series_list, color_map, x_col, x_label):
             if subset.empty:
                 continue
 
+            # Drop rows with no x-value before drawing the line: an experiment that
+            # exists as a training run but wasn't included in this bench CSV gets
+            # InferenceTime=NaN, which — when sorted between two valid points — breaks
+            # the Bokeh line into isolated segments.
+            line_subset = subset.dropna(subset=[x_col])
             source = ColumnDataSource(subset)
+            line_source = ColumnDataSource(line_subset)
             c = color_map[series_name]
 
             # Draw Line
             line = p.line(
                 x=x_col,
                 y=m["col"],
-                source=source,
+                source=line_source,
                 line_width=2,
                 color=c,
                 alpha=0.8,

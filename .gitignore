@@ -11,3 +11,5 @@ PUTOS_BENCHS
 
 *.zip
 *.html
+!index.html
+!results/*
