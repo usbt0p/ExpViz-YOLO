@@ -100,12 +100,29 @@ def generate_index(output_dir: Path):
                 color: #111;
                 border-bottom: 2px solid transparent;
                 transition: color 0.2s ease, border-bottom-color 0.2s ease;
-                display: inline-block;
+                display: inline-flex;
+                align-items: center;
                 margin-bottom: 8px;
+            }
+            .links-list a::after {
+                content: "";
+                display: inline-block;
+                width: 0.85em;
+                height: 0.85em;
+                margin-left: 10px;
+                background-color: currentColor;
+                mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'%3E%3C/path%3E%3Cpolyline points='15 3 21 3 21 9'%3E%3C/polyline%3E%3Cline x1='10' y1='14' x2='21' y2='3'%3E%3C/line%3E%3C/svg%3E") no-repeat center / contain;
+                -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'%3E%3C/path%3E%3Cpolyline points='15 3 21 3 21 9'%3E%3C/polyline%3E%3Cline x1='10' y1='14' x2='21' y2='3'%3E%3C/line%3E%3C/svg%3E") no-repeat center / contain;
+                opacity: 0.4;
+                transition: opacity 0.2s ease, transform 0.2s ease;
             }
             .links-list a:hover {
                 color: #0056b3;
                 border-bottom-color: #0056b3;
+            }
+            .links-list a:hover::after {
+                opacity: 1;
+                transform: translate(3px, -3px);
             }
             .desc {
                 margin: 0;
