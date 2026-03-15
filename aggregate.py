@@ -36,7 +36,7 @@ def sanitize_model_name(filename: str) -> str:
     name = re.sub(r"^results_experiments_train[_\-\s]*", "", name, flags=re.IGNORECASE).strip()
     name = re.sub(r"^results_compressed[_\-\s]*", "", name, flags=re.IGNORECASE).strip()
     # remove everything before the last "_yolo" found
-    name = re.sub(r".*_yolo", "yolo", name, flags=re.IGNORECASE).strip()
+    name = re.sub(r".*yolo", "yolo", name, flags=re.IGNORECASE).strip()
 
     # Collapse whitespace
     name = re.sub(r"\s+", " ", name).strip()

@@ -132,16 +132,17 @@ if __name__ == "__main__":
 
     # use this structure when you have *distinct experiments with one CSV each*, but want
     # them all visualized together in the same plots (e.g. to compare them side by side)
+
+    # note: for the last benchs, True_True_800 would mean halfp=True, int8=True, size=800
+    # some configs like that failed so they don't have to be plotted (logical, you cant have int8 and halfp at the same time)
     EXP_GROUPS = [
         {
             "list_dir": base_dir / "compressed_yolo26_imgsz_exps" / "list",
             "train_dir": base_dir / "compressed_yolo26_imgsz_exps" / "train",
-            "fp32_csv":  base_dir / "benchmark_results_imgsz" / "combined_results.csv",
         },
         {
             "list_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "list",
             "train_dir": base_dir / "compressed_yolo26_p2_p6_exps" / "train",
-            "fp32_csv":  base_dir / "benchmark_results_p2_p6" / "combined_results.csv",
         },
     ]
 
@@ -149,9 +150,13 @@ if __name__ == "__main__":
     # use these when you have several experiments that share the same 
     # benchmark results in *one CSV* file 
     SHARED_BENCH_VARIANTS = [
-        {"label": "halfp",      "csv": base_dir / "benchmark_halfp"       / "combined_results.csv"},
-        {"label": "halfp_int8", "csv": base_dir / "benchmark_halfp_int8"  / "combined_results.csv"},
-        {"label": "int8",       "csv": base_dir / "benchmark_int8"        / "combined_results.csv"},
+        {"label": "fp32_640",       "csv": base_dir / "PUTOS_BENCHS/putos_benchs_False_False_640"       / "combined_results.csv"},
+        {"label": "fp32_800",       "csv": base_dir / "PUTOS_BENCHS/putos_benchs_False_False_800"       / "combined_results.csv"},
+        {"label": "halfp_640",      "csv": base_dir / "PUTOS_BENCHS/putos_benchs_True_False_640"       / "combined_results.csv"},
+        {"label": "halfp_800",      "csv": base_dir / "PUTOS_BENCHS/putos_benchs_True_False_800"       / "combined_results.csv"},
+        # int8 experiments failed due to a problem with versions
+        # {"label": "int8_640",       "csv": base_dir / "PUTOS_BENCHS/putos_benchs_False_True_640"        / "combined_results.csv"},
+        # {"label": "int8_800",       "csv": base_dir / "PUTOS_BENCHS/putos_benchs_False_True_800"        / "combined_results.csv"},
     ]
 
     OUTPUT_DIR = base_dir / "results"
@@ -166,10 +171,8 @@ if __name__ == "__main__":
 
     print("Generating Metrics / PR Visualizations...")
     dfs_metrics = (
-        # fp32: each group has its own dedicated bench CSV
-        [load_experiments_data(g["list_dir"], g["train_dir"], g["fp32_csv"], bench_label="fp32") for g in EXP_GROUPS]
         # shared variants: one CSV already covers all groups
-        + [load_experiments_data(g["list_dir"], g["train_dir"], v["csv"], bench_label=v["label"]) for g in EXP_GROUPS for v in SHARED_BENCH_VARIANTS]
+        [load_experiments_data(g["list_dir"], g["train_dir"], v["csv"], bench_label=v["label"]) for g in EXP_GROUPS for v in SHARED_BENCH_VARIANTS]
     )
     df_metrics = pd.concat(dfs_metrics, ignore_index=True)
     print(df_metrics)
