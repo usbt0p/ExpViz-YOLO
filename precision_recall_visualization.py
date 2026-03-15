@@ -26,20 +26,28 @@ def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
 
     output_file(output_path, title="Precision vs Recall Tradeoff")
 
+    # Clean up DataFrame for PR Plot
+    # Precision and Recall are properties of the training (checkpoint), NOT the inference.
+    # We should only plot ONE point per trained model.
+    # Strip the bench label from Series, e.g. "Yolo26 Pretr. sz800 [fp32_640]" -> "Yolo26 Pretr. sz800"
+    df_pr = experiments_dataframe.copy()
+    df_pr["Series"] = df_pr["Series"].str.replace(r"\s+\[.*?\]$", "", regex=True)
+    df_pr = df_pr.drop_duplicates(subset=["Experiment"])
+
     # Filter Top N
     # We use mAP50_95 for ranking "best" models to filter
     if top_n:
-        experiments_dataframe = experiments_dataframe.sort_values(
+        df_pr = df_pr.sort_values(
             by="mAP50_95", ascending=False
         )
-        top_series = experiments_dataframe["Series"].unique()[:top_n]
-        experiments_dataframe = experiments_dataframe[
-            experiments_dataframe["Series"].isin(top_series)
+        top_series = df_pr["Series"].unique()[:top_n]
+        df_pr = df_pr[
+            df_pr["Series"].isin(top_series)
         ]
         print(f"[PR Viz] Filtering top {top_n} series")
 
     # Colors
-    series_list = sorted(experiments_dataframe["Series"].unique())
+    series_list = sorted(df_pr["Series"].unique())
     color_map = get_color_map(series_list)
 
     # Create Plot
@@ -60,8 +68,8 @@ def create_pr_visualization(experiments_dataframe, output_path, top_n=None):
     all_renderers = []
 
     for series_name in series_list:
-        subset = experiments_dataframe[
-            experiments_dataframe["Series"] == series_name
+        subset = df_pr[
+            df_pr["Series"] == series_name
         ].sort_values("SizeOrder")
         if subset.empty:
             continue
